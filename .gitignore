@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Node / frontend build artifacts
+node_modules/
+dist/
+build/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+.databrickscfg
+*.pem
+*.key
+
+# Editor and OS files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Test and coverage output
+.pytest_cache/
+.coverage
+htmlcov/
