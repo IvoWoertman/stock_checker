@@ -117,6 +117,11 @@ def connect(autocommit: bool = True):
     if dsn:
         conn = psycopg2.connect(dsn)
     else:
+        if not os.environ.get("PGHOST"):
+            raise RuntimeError(
+                "No database connection configured: attach the Lakebase "
+                "database resource to the app and redeploy (PGHOST is missing)."
+            )
         conn = psycopg2.connect(sslmode=os.environ.get("PGSSLMODE", "require"))
     conn.autocommit = autocommit
     return conn
