@@ -110,7 +110,8 @@ def remaining_lot(lot_id):
 def handle_missing_env(error):
     return jsonify({
         "error": "App is missing Databricks connection details "
-                 "(DATABRICKS_SERVER_HOSTNAME / DATABRICKS_HTTP_PATH)."
+                 "(DATABRICKS_HOST and a SQL warehouse resource). Attach the "
+                 "SQL warehouse resource and redeploy."
     }), 500
 
 

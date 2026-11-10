@@ -92,8 +92,11 @@ Things to verify in this first run (milestone-1 spike):
 
 ## Troubleshooting
 
-- **`DATABRICKS_SERVER_HOSTNAME` missing:** the app must have a SQL warehouse
-  resource attached (step 3) for Databricks to inject the connection details.
+- **"Missing Databricks connection details":** the app needs `DATABRICKS_HOST`
+  (always injected) plus the SQL warehouse resource (step 3) so
+  `DATABRICKS_WAREHOUSE_ID` is available. Attach the resource with key
+  `sql-warehouse` and redeploy. Check the app's **Environment** tab to confirm
+  `DATABRICKS_WAREHOUSE_ID` is listed.
 - **Invalid access token / permission denied:** re-check the service principal
   privileges in step 4 (`USE`/`SELECT`/`MODIFY` on the schema, `Can use` on the
   warehouse).

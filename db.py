@@ -1,10 +1,11 @@
 """Connection and query helpers for the Databricks lakehouse.
 
 Inside a Databricks App, Databricks provisions a service principal and injects
-the connection details (server hostname, HTTP path, OAuth client id/secret) as
-environment variables when a SQL warehouse is attached as an app resource.
-For local development, set DATABRICKS_TOKEN (a personal access token) plus the
-hostname and HTTP path. See .env.example.
+these environment variables: DATABRICKS_HOST (workspace URL), DATABRICKS_CLIENT_ID
+and DATABRICKS_CLIENT_SECRET (service-principal OAuth). A SQL warehouse attached
+as an app resource is exposed by ID (see app.yaml `valueFrom: sql-warehouse`).
+For local development, set DATABRICKS_TOKEN (a personal access token) plus
+DATABRICKS_SERVER_HOSTNAME and DATABRICKS_HTTP_PATH. See .env.example.
 """
 import os
 from datetime import date as _date
@@ -23,25 +24,35 @@ def fq(table: str) -> str:
     return f"{CATALOG}.{SCHEMA}.{table}"
 
 
-def _service_principal_provider():
+def _service_principal_provider(host: str):
     from databricks.sdk.core import Config, oauth_service_principal
 
     config = Config(
-        host=f"https://{os.environ['DATABRICKS_SERVER_HOSTNAME']}",
+        host=host,
         client_id=os.environ["DATABRICKS_CLIENT_ID"],
         client_secret=os.environ["DATABRICKS_CLIENT_SECRET"],
     )
     return oauth_service_principal(config)
 
 
+def _server_hostname():
+    """Workspace hostname without the URL scheme.
+
+    In the app runtime this comes from DATABRICKS_HOST (a full URL). Locally,
+    DATABRICKS_SERVER_HOSTNAME is set directly.
+    """
+    host = os.environ.get("DATABRICKS_HOST") or os.environ.get("DATABRICKS_SERVER_HOSTNAME")
+    if host:
+        return host.split("://", 1)[-1].rstrip("/")
+    raise KeyError("DATABRICKS_HOST (app runtime) or DATABRICKS_SERVER_HOSTNAME (local) is required.")
+
+
 def _http_path():
     """Resolve the warehouse HTTP path.
 
-    Databricks injects DATABRICKS_SERVER_HOSTNAME and the service-principal
-    OAuth credentials as default environment variables. The warehouse is
-    referenced by ID (see app.yaml `valueFrom: sql-warehouse`), so the HTTP
-    path is built from that ID unless DATABRICKS_HTTP_PATH is set directly
-    (for local development or if Databricks provides it).
+    The warehouse is referenced by ID (see app.yaml `valueFrom: sql-warehouse`),
+    so the HTTP path is built from that ID unless DATABRICKS_HTTP_PATH is set
+    directly (for local development).
     """
     http_path = os.environ.get("DATABRICKS_HTTP_PATH")
     if http_path:
@@ -57,23 +68,30 @@ def _http_path():
 def connect(autocommit: bool = True):
     """Open a connection to the SQL warehouse.
 
-    Authentication order:
-      1. OAuth machine-to-machine (app service principal) when
-         DATABRICKS_CLIENT_ID and DATABRICKS_CLIENT_SECRET are set.
-      2. Personal access token (local dev) when DATABRICKS_TOKEN is set.
-      3. OAuth user-to-machine (interactive) otherwise.
+    App runtime: service-principal OAuth (DATABRICKS_CLIENT_ID / SECRET) against
+    DATABRICKS_HOST. Local development: personal access token (DATABRICKS_TOKEN).
     """
-    kwargs = {
-        "server_hostname": os.environ["DATABRICKS_SERVER_HOSTNAME"],
-        "http_path": _http_path(),
-        "user_agent_entry": "stock-tracker",
-    }
-    if os.environ.get("DATABRICKS_CLIENT_ID") and os.environ.get("DATABRICKS_CLIENT_SECRET"):
-        kwargs["credentials_provider"] = _service_principal_provider
-    elif os.environ.get("DATABRICKS_TOKEN"):
-        kwargs["access_token"] = os.environ["DATABRICKS_TOKEN"]
+    client_id = os.environ.get("DATABRICKS_CLIENT_ID")
+    client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET")
+
+    if client_id and client_secret:
+        host = os.environ.get("DATABRICKS_HOST")
+        if not host:
+            raise KeyError("DATABRICKS_HOST is not set in the app runtime.")
+        kwargs = {
+            "server_hostname": _server_hostname(),
+            "http_path": _http_path(),
+            "credentials_provider": lambda: _service_principal_provider(host),
+            "user_agent_entry": "stock-tracker",
+        }
     else:
-        kwargs["auth_type"] = "databricks-oauth"
+        kwargs = {
+            "server_hostname": _server_hostname(),
+            "http_path": _http_path(),
+            "access_token": os.environ["DATABRICKS_TOKEN"],
+            "user_agent_entry": "stock-tracker",
+        }
+
     if not autocommit:
         kwargs["autocommit"] = False
     return sql.connect(**kwargs)
