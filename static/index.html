@@ -4,12 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#0f172a" />
-    <title>Freezer</title>
+    <title>Stock</title>
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <h1>Freezer</h1>
+      <h1>Stock</h1>
       <span class="status" id="status" title="API connection">…</span>
     </header>
 
@@ -35,13 +35,13 @@
             <span>Barcode (optional)</span>
             <input name="gtin" type="text" inputmode="numeric" placeholder="EAN / GTIN" />
           </label>
-          <button type="submit">Add to freezer</button>
+          <button type="submit">Add to stock</button>
         </form>
       </section>
 
       <section class="inventory">
         <div class="inventory-head">
-          <h2>In the freezer</h2>
+          <h2>In the stock</h2>
           <button id="refresh" type="button">Refresh</button>
         </div>
         <div id="inventory" class="lot-list" aria-live="polite"></div>

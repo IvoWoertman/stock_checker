@@ -1,6 +1,6 @@
-# Freezer Tracker
+# Stock Tracker
 
-A phone-first freezer inventory app for two people, running on Databricks with Unity Catalog managed Delta tables (the lakehouse).
+A phone-first stock inventory app for two people, running on Databricks with Unity Catalog managed Delta tables (the lakehouse).
 
 See [PLAN.md](PLAN.md) for the product scope, architecture, ACID transaction design, Free Edition constraints, milestones, and acceptance criteria.
 
@@ -36,7 +36,7 @@ All tables are Unity Catalog **managed Delta** tables with **catalog commits** e
 1. In your workspace, run `sql/schema.sql` (once) in the SQL editor to create the tables and view. Optionally run `sql/seed.sql` to add sample data.
 2. Create a Databricks App from this repository (or workspace folder).
 3. Attach a **SQL warehouse** as an app resource. Databricks injects the connection details and grants the app's service principal.
-4. Grant the app's service principal `SELECT` and `MODIFY` on `main.freezer` and `CAN USE` on the warehouse.
+4. Grant the app's service principal `SELECT` and `MODIFY` on `main.stock` and `CAN USE` on the warehouse.
 5. Deploy. The app runs `gunicorn` per `app.yaml`.
 
 ## Run locally

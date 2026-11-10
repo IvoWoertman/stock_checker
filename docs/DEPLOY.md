@@ -1,4 +1,4 @@
-# Deploy the Freezer Tracker to Databricks
+# Deploy the Stock Tracker to Databricks
 
 Step-by-step checklist to get the app running in your workspace, validate the
 lakehouse connection, and share it with the second household member.
@@ -15,15 +15,15 @@ lakehouse connection, and share it with the second household member.
 1. In the workspace sidebar, open **SQL Editor**.
 2. Confirm a warehouse is selected at the top-right.
 3. Paste the contents of [`sql/schema.sql`](sql/schema.sql) and run it. This
-   creates `main.freezer` with the three managed Delta tables and the stock view.
+   creates `main.stock` with the three managed Delta tables and the stock view.
 4. Optionally run [`sql/seed.sql`](sql/seed.sql) to add two sample items.
 5. Sanity-check the view:
 
    ```sql
-   SELECT * FROM main.freezer.v_current_lot_stock;
+   SELECT * FROM main.stock.v_current_lot_stock;
    ```
 
-> If you use a catalog/schema other than `main.freezer`, change the names in
+> If you use a catalog/schema other than `main.stock`, change the names in
 > the SQL files and set `DATABRICKS_CATALOG` / `DATABRICKS_SCHEMA` for the app
 > (add them to `app.yaml`).
 
@@ -55,8 +55,8 @@ access to the tables and compute access to the warehouse. If the deployment's
 authorization review offers to grant these, accept it; otherwise grant them in
 Catalog Explorer:
 
-1. Open **Catalog** (Catalog Explorer) and find `main` → `freezer`.
-2. On the `freezer` schema, open **Permissions**.
+1. Open **Catalog** (Catalog Explorer) and find `main` → `stock`.
+2. On the `stock` schema, open **Permissions**.
 3. Grant the app's service principal (search by the app name):
    - `USE SCHEMA` (and `USE CATALOG` on `main`)
    - `SELECT` (to read tables and the view)

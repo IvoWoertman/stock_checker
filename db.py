@@ -15,7 +15,7 @@ from decimal import Decimal
 from databricks import sql
 
 CATALOG = os.environ.get("DATABRICKS_CATALOG", "main")
-SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "freezer")
+SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "stock")
 
 
 def fq(table: str) -> str:
@@ -66,7 +66,7 @@ def connect(autocommit: bool = True):
     kwargs = {
         "server_hostname": os.environ["DATABRICKS_SERVER_HOSTNAME"],
         "http_path": _http_path(),
-        "user_agent_entry": "freezer-tracker",
+        "user_agent_entry": "stock-tracker",
     }
     if os.environ.get("DATABRICKS_CLIENT_ID") and os.environ.get("DATABRICKS_CLIENT_SECRET"):
         kwargs["credentials_provider"] = _service_principal_provider

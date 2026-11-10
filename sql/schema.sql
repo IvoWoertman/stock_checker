@@ -1,18 +1,18 @@
--- Freezer Tracker lakehouse schema.
+-- Stock Tracker lakehouse schema.
 --
 -- Run this once in the Databricks SQL editor to bootstrap the schema.
 -- It creates Unity Catalog managed Delta tables with catalog commits enabled,
 -- which allows the app's multi-table transactions (see PLAN.md section 6).
 --
--- If you use a catalog or schema other than main.freezer, change the names
+-- If you use a catalog or schema other than main.stock, change the names
 -- below AND set DATABRICKS_CATALOG / DATABRICKS_SCHEMA for the app.
 
 CREATE CATALOG IF NOT EXISTS main;
-CREATE SCHEMA IF NOT EXISTS main.freezer;
+CREATE SCHEMA IF NOT EXISTS main.stock;
 
 -- Products: what a package contains. A retail barcode (gtin) identifies a
 -- product, not a particular package.
-CREATE TABLE IF NOT EXISTS main.freezer.products (
+CREATE TABLE IF NOT EXISTS main.stock.products (
   product_id           STRING       NOT NULL,
   name                 STRING       NOT NULL,
   brand                STRING,
@@ -23,9 +23,9 @@ CREATE TABLE IF NOT EXISTS main.freezer.products (
   updated_at           TIMESTAMP    NOT NULL
 ) TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported');
 
--- Lots: one physical package in the freezer. lot_id is also the unique QR
+-- Lots: one physical package in the stock. lot_id is also the unique QR
 -- payload printed on the label.
-CREATE TABLE IF NOT EXISTS main.freezer.lots (
+CREATE TABLE IF NOT EXISTS main.stock.lots (
   lot_id           STRING    NOT NULL,
   product_id       STRING    NOT NULL,
   added_date       DATE      NOT NULL,
@@ -37,7 +37,7 @@ CREATE TABLE IF NOT EXISTS main.freezer.lots (
 
 -- Inventory events: the append-only ledger. Current stock is derived by
 -- summing quantity_delta_g per lot; negative stock is a data-quality error.
-CREATE TABLE IF NOT EXISTS main.freezer.inventory_events (
+CREATE TABLE IF NOT EXISTS main.stock.inventory_events (
   event_id         STRING        NOT NULL,
   op_id            STRING        NOT NULL,
   lot_id           STRING        NOT NULL,
@@ -50,18 +50,18 @@ CREATE TABLE IF NOT EXISTS main.freezer.inventory_events (
   reversed_event_id STRING
 ) TBLPROPERTIES ('delta.feature.catalogManaged' = 'supported');
 
-ALTER TABLE main.freezer.inventory_events
+ALTER TABLE main.stock.inventory_events
   ADD CONSTRAINT event_type_check CHECK (
     event_type IN ('STOCK_IN', 'USE', 'ADJUST', 'DISCARD', 'REVERSAL')
   );
 
-ALTER TABLE main.freezer.inventory_events
+ALTER TABLE main.stock.inventory_events
   ADD CONSTRAINT method_check CHECK (
     method IN ('ESTIMATE', 'WEIGHED', 'CORRECTION', 'SYSTEM')
   );
 
 -- Current stock per lot, derived from the ledger.
-CREATE OR REPLACE VIEW main.freezer.v_current_lot_stock AS
+CREATE OR REPLACE VIEW main.stock.v_current_lot_stock AS
 SELECT
   l.lot_id,
   l.product_id,
@@ -75,9 +75,9 @@ SELECT
   COALESCE(SUM(e.quantity_delta_g), 0) AS grams_remaining,
   MIN(e.event_time)      AS first_event_time,
   MAX(e.event_time)      AS last_event_time
-FROM main.freezer.lots l
-JOIN main.freezer.products p ON p.product_id = l.product_id
-LEFT JOIN main.freezer.inventory_events e ON e.lot_id = l.lot_id
+FROM main.stock.lots l
+JOIN main.stock.products p ON p.product_id = l.product_id
+LEFT JOIN main.stock.inventory_events e ON e.lot_id = l.lot_id
 GROUP BY
   l.lot_id, l.product_id, p.name, p.brand, p.gtin,
   l.added_date, l.best_before_date, l.location, l.notes;

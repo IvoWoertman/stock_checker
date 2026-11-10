@@ -1,4 +1,4 @@
-"""Flask app for the Freezer Tracker (Databricks App)."""
+"""Flask app for the Stock Tracker (Databricks App)."""
 import os
 
 from flask import Flask, jsonify, request, send_from_directory
