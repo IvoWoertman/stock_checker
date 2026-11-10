@@ -61,11 +61,9 @@ _DDL = [
     )
     """,
     f"ALTER TABLE {SCHEMA}.inventory_events DROP CONSTRAINT IF EXISTS event_type_check",
-    f"ALTER TABLE {SCHEMA}.inventory_events ADD CONSTRAINT event_type_check "
-    "CHECK (event_type IN ('STOCK_IN','USE','ADJUST','DISCARD','REVERSAL'))",
+    f"ALTER TABLE {SCHEMA}.inventory_events ADD CONSTRAINT event_type_check CHECK (event_type IN ('STOCK_IN','USE','ADJUST','DISCARD','REVERSAL'))",
     f"ALTER TABLE {SCHEMA}.inventory_events DROP CONSTRAINT IF EXISTS method_check",
-    f"ALTER TABLE {SCHEMA}.inventory_events ADD CONSTRAINT method_check "
-    "CHECK (method IN ('ESTIMATE','WEIGHED','CORRECTION','SYSTEM'))",
+    f"ALTER TABLE {SCHEMA}.inventory_events ADD CONSTRAINT method_check CHECK (method IN ('ESTIMATE','WEIGHED','CORRECTION','SYSTEM'))",
     f"""
     CREATE OR REPLACE VIEW {SCHEMA}.v_current_lot_stock AS
     SELECT
@@ -81,8 +79,7 @@ _DDL = [
     GROUP BY l.lot_id, l.product_id, p.name, p.brand, p.gtin,
              l.added_date, l.best_before_date, l.location, l.notes
     """,
-    f"CREATE OR REPLACE VIEW {SCHEMA}.v_active_lot_stock AS "
-    f"SELECT * FROM {SCHEMA}.v_current_lot_stock WHERE grams_remaining > 0",
+    f"CREATE OR REPLACE VIEW {SCHEMA}.v_active_lot_stock AS SELECT * FROM {SCHEMA}.v_current_lot_stock WHERE grams_remaining > 0",
     f"""
     CREATE OR REPLACE VIEW {SCHEMA}.v_product_stock AS
     SELECT

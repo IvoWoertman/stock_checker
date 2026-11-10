@@ -1,5 +1,6 @@
 """Flask app for the Stock Tracker (Databricks App)."""
 import os
+from contextlib import suppress
 
 from flask import Flask, jsonify, request, send_from_directory
 
@@ -17,11 +18,9 @@ _bootstrapped = False
 def index():
     global _bootstrapped
     if not _bootstrapped:
-        try:
+        with suppress(Exception):
             db.bootstrap()
             _bootstrapped = True
-        except Exception:
-            pass
     return send_from_directory(STATIC_DIR, "index.html")
 
 
