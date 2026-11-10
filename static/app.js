@@ -209,10 +209,21 @@ async function lookupOff(code) {
     if (!response.ok) return null;
     const data = await response.json();
     const product = data.product || {};
-    return product.product_name_nl || product.product_name || product.generic_name || null;
+    const name = product.product_name_nl || product.product_name || product.generic_name || null;
+    return { name, grams: parseProductQuantity(product) };
   } catch {
     return null;
   }
+}
+
+function parseProductQuantity(product) {
+  // product_quantity is a number in grams (or ml for liquids). Prefer it.
+  const numeric = Number(product && product.product_quantity);
+  if (Number.isFinite(numeric) && numeric > 0) return Math.round(numeric);
+  // Fall back to parsing a human string like "500 g" from `quantity`.
+  const match = /(\d+(?:[.,]\d+)?)\s*g\b/i.exec((product && product.quantity) || '');
+  if (match) return Math.round(Number(match[1].replace(',', '.')));
+  return null;
 }
 
 async function handleLotScan(lotId) {
@@ -238,10 +249,10 @@ async function handleBarcodeScan(code) {
       showToast(`Found: ${data.product.name}`);
       return;
     }
-    const offName = await lookupOff(code);
-    if (offName) {
-      fillAddForm(offName, null, code, null);
-      showToast(`Found online: ${offName}`);
+    const off = await lookupOff(code);
+    if (off && off.name) {
+      fillAddForm(off.name, off.grams, code, null);
+      showToast(off.grams ? `Found online: ${off.name} (~${off.grams} g)` : `Found online: ${off.name}`);
     } else {
       fillAddForm('', null, code, null);
       showToast('New barcode — add a name.', true);

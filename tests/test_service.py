@@ -5,7 +5,7 @@ import service
 
 
 def test_add_lot_creates_product_lot_and_event(fake_db):
-    fake_db.cursor._fetchone = [None]  # name_key lookup finds nothing -> create
+    fake_db.cursor._fetchone = [None, None]  # op_id dup check, then name_key lookup
     result = service.add_lot(name="Ground beef", qty_g=500)
 
     assert result["duplicate"] is False
@@ -15,15 +15,14 @@ def test_add_lot_creates_product_lot_and_event(fake_db):
 
 
 def test_add_lot_is_idempotent(fake_db):
-    fake_db.one_results = [{"lot_id": "existing-lot"}]
+    fake_db.cursor._fetchone = [("existing-lot",)]
     result = service.add_lot(name="Ground beef", qty_g=500)
     assert result == {"lot_id": "existing-lot", "duplicate": True}
-    assert fake_db.connect_calls == 0
+    assert fake_db.connect_calls == 1
 
 
 def test_record_use_rejects_overuse(fake_db):
-    fake_db.one_results = [None]  # _already_processed
-    fake_db.cursor._fetchone = [(200,)]  # current balance
+    fake_db.cursor._fetchone = [None, (200,)]  # op_id dup check, then balance
     with pytest.raises(ValueError):
         service.record_use(lot_id="lot-1", grams_used=300)
     assert fake_db.connection.rolled_back is True

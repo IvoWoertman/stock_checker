@@ -34,15 +34,14 @@ def test_create_lot_requires_name(client):
 
 
 def test_create_lot_ok(client, fake_db):
-    fake_db.cursor._fetchone = [None]
+    fake_db.cursor._fetchone = [None, None]
     response = client.post("/api/lots", json={"name": "Ground beef", "qty_g": 500})
     assert response.status_code == 201
     assert response.get_json()["duplicate"] is False
 
 
 def test_use_overuse_returns_conflict(client, fake_db):
-    fake_db.one_results = [None]  # _already_processed
-    fake_db.cursor._fetchone = [(200,)]  # balance
+    fake_db.cursor._fetchone = [None, (200,)]  # dup check, then balance
     response = client.post("/api/lots/lot-1/use", json={"grams_used": 300})
     assert response.status_code == 409
 

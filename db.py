@@ -108,11 +108,10 @@ def _jsonable(value):
 
 def rows(sql_text: str, params=None):
     """Run a SELECT and return a list of dicts with JSON-safe values."""
-    with connect() as conn:
-        with conn.cursor() as cur:
-            cur.execute(sql_text, params or [])
-            cols = [c[0] for c in cur.description]
-            return [{c: _jsonable(v) for c, v in zip(cols, row)} for row in cur.fetchall()]
+    with connect() as conn, conn.cursor() as cur:
+        cur.execute(sql_text, params or [])
+        cols = [c[0] for c in cur.description]
+        return [{c: _jsonable(v) for c, v in zip(cols, row)} for row in cur.fetchall()]
 
 
 def one(sql_text: str, params=None):

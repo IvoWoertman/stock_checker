@@ -6,7 +6,7 @@ milestone-1 spike must confirm multi-table atomicity; if it is not honored,
 fall back to explicit `BEGIN TRANSACTION ... COMMIT` or `BEGIN ATOMIC ... END`.
 """
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from datetime import date, timedelta
 
 import db
@@ -22,10 +22,8 @@ def atomic():
         yield cur
         conn.commit()
     except Exception:
-        try:
+        with suppress(Exception):
             conn.rollback()
-        except Exception:
-            pass
         raise
     finally:
         cur.close()
@@ -76,13 +74,6 @@ def lookup_product(code: str):
 
 # ---- writes --------------------------------------------------------------
 
-def _already_processed(op_id: str):
-    return db.one(
-        f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = ? LIMIT 1",
-        [op_id],
-    )
-
-
 def _get_or_create_product(cur, *, name, gtin, shelf_life_days):
     """Return (product_id, default_best_before_days) for a product, matching by
     barcode first, then canonical name, else creating it."""
@@ -119,15 +110,19 @@ def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
             location=None, notes=None, actor=None, shelf_life_days=None, op_id=None):
     """Create a product if needed, a lot, and its stock-in event, atomically."""
     op_id = op_id or str(uuid.uuid4())
-    processed = _already_processed(op_id)
-    if processed:
-        return {"lot_id": processed["lot_id"], "duplicate": True}
-
     qty_g = float(qty_g)
     added = date.fromisoformat(added_date) if added_date else date.today()
     lot_id = str(uuid.uuid4())
 
     with atomic() as cur:
+        cur.execute(
+            f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = ? LIMIT 1",
+            [op_id],
+        )
+        dup = cur.fetchone()
+        if dup:
+            return {"lot_id": dup[0], "duplicate": True}
+
         product_id, default_bbd = _get_or_create_product(
             cur, name=name, gtin=gtin, shelf_life_days=shelf_life_days
         )
@@ -165,13 +160,18 @@ def _record(*, lot_id, delta=None, target=None, event_type, method, actor, note,
     must be given.
     """
     op_id = op_id or str(uuid.uuid4())
-    processed = _already_processed(op_id)
-    if processed:
-        return {"lot_id": lot_id, "duplicate": True}
 
     for _attempt in range(3):
         try:
             with atomic() as cur:
+                cur.execute(
+                    f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = ? LIMIT 1",
+                    [op_id],
+                )
+                dup = cur.fetchone()
+                if dup:
+                    return {"lot_id": dup[0], "duplicate": True}
+
                 cur.execute(
                     f"SELECT COALESCE(SUM(quantity_delta_g), 0) FROM {db.fq('inventory_events')} WHERE lot_id = ?",
                     [lot_id],
