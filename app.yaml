@@ -1,0 +1,13 @@
+# Databricks App runtime configuration.
+#
+# Databricks injects DATABRICKS_SERVER_HOSTNAME, DATABRICKS_HTTP_PATH and the
+# app service principal's OAuth credentials (DATABRICKS_CLIENT_ID /
+# DATABRICKS_CLIENT_SECRET) automatically when a SQL warehouse is attached as
+# an app resource, so no secrets are declared here.
+#
+# The app must listen on the port Databricks provides (DATABRICKS_APP_PORT),
+# defaulting to 8080 for local development.
+command:
+  - sh
+  - -c
+  - exec gunicorn -w 2 -b 0.0.0.0:${DATABRICKS_APP_PORT:-8080} app:app

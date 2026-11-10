@@ -1,0 +1,4 @@
+flask>=3.0
+gunicorn>=21.2
+databricks-sql-connector>=3.0
+databricks-sdk>=0.30
