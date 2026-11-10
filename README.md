@@ -19,7 +19,7 @@ db.py                 Databricks SQL connection + query helpers
 service.py            Business logic and atomic writes
 catalog.py            Name normalization + auto-categorization
 sql/schema.sql        Lakehouse DDL (managed Delta tables + views)
-sql/migrate.sql       Additive migration for an existing schema
+sql/reset.sql         Drop the schema (destroys data) for a clean reset
 sql/seed.sql          Sample data for testing
 static/               Phone-first HTML/JS/CSS frontend (incl. barcode scanner)
 tests/                Unit and integration tests
@@ -45,8 +45,8 @@ enabled so the app's writes can span multiple tables atomically.
 ## Deploy to Databricks
 
 1. In your workspace, run `sql/schema.sql` (once) in the SQL editor to create
-   the tables and views. For an existing schema, run `sql/migrate.sql` instead.
-   Optionally run `sql/seed.sql` to add sample data.
+   the tables and views. To start over, run `sql/reset.sql` first (this drops
+   the schema and all data). Optionally run `sql/seed.sql` to add sample data.
 2. Create a Databricks App from this repository (or workspace folder).
 3. Attach a **SQL warehouse** as an app resource. Databricks injects the connection details and grants the app's service principal.
 4. Grant the app's service principal `SELECT` and `MODIFY` on `main.stock` and `CAN USE` on the warehouse.

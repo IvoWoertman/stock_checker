@@ -16,8 +16,8 @@ lakehouse connection, and share it with the second household member.
 2. Confirm a warehouse is selected at the top-right.
 3. Paste the contents of [`sql/schema.sql`](sql/schema.sql) and run it. This
    creates `main.stock` with the three managed Delta tables and the stock views.
-   If the schema already exists from an earlier version, run
-   [`sql/migrate.sql`](sql/migrate.sql) instead to add the new columns and views.
+   To start over, run [`sql/reset.sql`](sql/reset.sql) first (drops the schema
+   and all data), then `schema.sql`.
 4. Optionally run [`sql/seed.sql`](sql/seed.sql) to add sample items.
 5. Sanity-check the view:
 
