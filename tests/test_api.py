@@ -54,3 +54,14 @@ def test_product_lookup(client, fake_db):
     response = client.get("/api/products/lookup?code=8712345678901")
     assert response.status_code == 200
     assert response.get_json()["product"]["name"] == "Beef"
+
+
+def test_shopping_add_ok(client, fake_db):
+    response = client.post("/api/shopping", json={"name": "Milk"})
+    assert response.status_code == 201
+    assert response.get_json()["item_id"]
+
+
+def test_shopping_requires_name(client):
+    response = client.post("/api/shopping", json={})
+    assert response.status_code == 400

@@ -157,5 +157,24 @@ def discard_lot(lot_id):
     return _run_lot_action(lot_id, service.discard)
 
 
+@app.get("/api/shopping")
+def shopping():
+    return jsonify(service.list_shopping())
+
+
+@app.post("/api/shopping")
+def add_shopping():
+    payload = request.get_json(force=True) or {}
+    name = (payload.get("name") or "").strip()
+    if not name:
+        return jsonify({"error": "name is required"}), 400
+    return jsonify(service.add_shopping_item(name=name, note=payload.get("note"))), 201
+
+
+@app.post("/api/shopping/<item_id>/done")
+def done_shopping(item_id):
+    return jsonify(service.complete_shopping_item(item_id))
+
+
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=int(os.environ.get("PORT", "8080")))

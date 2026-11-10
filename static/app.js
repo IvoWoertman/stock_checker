@@ -13,6 +13,8 @@ const els = {
   scanModal: $('#scan-modal'),
   scanClose: $('#scan-close'),
   scanStatus: $('#scan-status'),
+  shopForm: $('#shop-form'),
+  shopping: $('#shopping'),
 };
 
 let toastTimer;
@@ -29,6 +31,17 @@ function fmtGrams(value) {
   if (!Number.isFinite(n)) return '—';
   if (Math.abs(n) < 1) return '~0 g';
   return `~${Math.round(n)} g`;
+}
+
+function expiryBadge(bestBefore) {
+  if (!bestBefore) return '';
+  const d = new Date(`${bestBefore}T00:00:00`);
+  const today = new Date(); today.setHours(0, 0, 0, 0);
+  const days = Math.round((d - today) / 86400000);
+  if (days < 0) return `<span class="expiry exp-overdue">expired ${Math.abs(days)}d ago</span>`;
+  if (days === 0) return '<span class="expiry exp-soon">expires today</span>';
+  if (days <= 7) return `<span class="expiry exp-soon">${days}d left</span>`;
+  return `<span class="expiry">best before ${esc(bestBefore)}</span>`;
 }
 
 function showToast(message, isError = false) {
@@ -93,8 +106,8 @@ async function toggleProduct(productId) {
           <span class="grams">${fmtGrams(l.grams_remaining)}</span>
           <span class="lot-meta">
             ${l.location ? `${esc(l.location)} · ` : ''}${esc(l.added_date)}
-            ${l.best_before_date ? ` · best before ${esc(l.best_before_date)}` : ''}
           </span>
+          ${expiryBadge(l.best_before_date)}
         </div>
         <div class="lot-actions">
           <button data-act="use" data-id="${esc(l.lot_id)}">Use</button>
@@ -190,6 +203,45 @@ async function handleAction(action, lotId) {
     showToast('Updated');
     await loadInventory();
     document.querySelectorAll('.lots').forEach((box) => { box.hidden = true; });
+  } catch (error) { showToast(error.message, true); }
+}
+
+// ---- shopping list -------------------------------------------------------
+
+async function loadShopping() {
+  try {
+    renderShopping(await request('/shopping'));
+  } catch (error) { /* non-fatal */ }
+}
+
+function renderShopping(items) {
+  if (!items.length) {
+    els.shopping.innerHTML = '<p class="empty">Nothing to buy.</p>';
+    return;
+  }
+  els.shopping.innerHTML = items.map((it) => `
+    <div class="shop-row">
+      <span class="shop-name">${esc(it.name)}${it.note ? ` <small>· ${esc(it.note)}</small>` : ''}</span>
+      <button class="shop-done" data-id="${esc(it.item_id)}" title="Bought">✓</button>
+    </div>`).join('');
+}
+
+async function handleShopAdd(event) {
+  event.preventDefault();
+  const form = new FormData(els.shopForm);
+  const name = (form.get('shop-name') || '').trim();
+  if (!name) return;
+  try {
+    await request('/shopping', { method: 'POST', body: JSON.stringify({ name }) });
+    els.shopForm.reset();
+    await loadShopping();
+  } catch (error) { showToast(error.message, true); }
+}
+
+async function handleShopDone(itemId) {
+  try {
+    await request(`/shopping/${itemId}/done`, { method: 'POST', body: '{}' });
+    await loadShopping();
   } catch (error) { showToast(error.message, true); }
 }
 
@@ -316,5 +368,11 @@ els.inventory.addEventListener('click', (event) => {
   const action = event.target.closest('[data-act]');
   if (action) handleAction(action.dataset.act, action.dataset.id);
 });
+els.shopForm.addEventListener('submit', handleShopAdd);
+els.shopping.addEventListener('click', (event) => {
+  const btn = event.target.closest('.shop-done');
+  if (btn) handleShopDone(btn.dataset.id);
+});
 
 loadInventory();
+loadShopping();

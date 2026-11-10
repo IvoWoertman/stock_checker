@@ -67,6 +67,15 @@ _DDL = [
     f"ALTER TABLE {SCHEMA}.inventory_events DROP CONSTRAINT IF EXISTS method_check",
     f"ALTER TABLE {SCHEMA}.inventory_events ADD CONSTRAINT method_check CHECK (method IN ('ESTIMATE','WEIGHED','CORRECTION','SYSTEM'))",
     f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.shopping_items (
+      item_id    TEXT PRIMARY KEY,
+      name       TEXT NOT NULL,
+      note       TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+      done_at    TIMESTAMPTZ
+    )
+    """,
+    f"""
     CREATE OR REPLACE VIEW {SCHEMA}.v_current_lot_stock AS
     SELECT
       l.lot_id, l.product_id,

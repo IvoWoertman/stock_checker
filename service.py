@@ -227,3 +227,30 @@ def discard(*, lot_id, actor=None, note=None, op_id=None):
         lot_id=lot_id, target=0, event_type="DISCARD", method="ESTIMATE",
         actor=actor, note=note or "Discarded remaining", op_id=op_id,
     )
+
+
+# ---- shopping list -------------------------------------------------------
+
+def list_shopping():
+    return db.rows(
+        f"SELECT * FROM {db.fq('shopping_items')} WHERE done_at IS NULL ORDER BY created_at ASC"
+    )
+
+
+def add_shopping_item(*, name, note=None):
+    item_id = str(uuid.uuid4())
+    with atomic() as cur:
+        cur.execute(
+            f"INSERT INTO {db.fq('shopping_items')} (item_id, name, note) VALUES (%s, %s, %s)",
+            [item_id, name, note],
+        )
+    return {"item_id": item_id}
+
+
+def complete_shopping_item(item_id):
+    with atomic() as cur:
+        cur.execute(
+            f"UPDATE {db.fq('shopping_items')} SET done_at = CURRENT_TIMESTAMP WHERE item_id = %s",
+            [item_id],
+        )
+    return {"item_id": item_id, "done": True}

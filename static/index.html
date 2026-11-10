@@ -56,6 +56,17 @@
         </div>
         <div id="inventory" class="product-list" aria-live="polite"></div>
       </section>
+
+      <section class="inventory">
+        <div class="inventory-head">
+          <h2>Shopping list</h2>
+        </div>
+        <form id="shop-form" class="shop-form" autocomplete="off">
+          <input name="shop-name" type="text" placeholder="Add to buy…" required />
+          <button type="submit">Add</button>
+        </form>
+        <div id="shopping" class="shop-list" aria-live="polite"></div>
+      </section>
     </main>
 
     <div class="modal" id="scan-modal" hidden>

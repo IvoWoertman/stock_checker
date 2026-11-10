@@ -156,6 +156,37 @@ button {
 
 .empty { color: var(--muted); text-align: center; font-size: 14px; }
 
+/* Expiry badges */
+.expiry { display: inline-block; font-size: 12px; color: var(--muted); margin-top: 2px; }
+.expiry.exp-soon { color: #fbbf24; font-weight: 600; }
+.expiry.exp-overdue { color: var(--danger); font-weight: 600; }
+
+/* Shopping list */
+.shop-form { display: flex; gap: 8px; margin-bottom: 10px; }
+.shop-form input { flex: 1; }
+.shop-form button { background: var(--accent); color: var(--accent-text); }
+.shop-list { display: flex; flex-direction: column; gap: 8px; }
+.shop-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  padding: 10px 12px;
+}
+.shop-name { font-size: 15px; }
+.shop-name small { color: var(--muted); font-size: 12px; }
+.shop-done {
+  background: var(--panel);
+  color: var(--accent);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 4px 10px;
+  font-size: 14px;
+}
+
 /* Scan modal */
 .modal { position: fixed; inset: 0; background: rgba(2, 6, 23, 0.85); display: flex; align-items: center; justify-content: center; padding: 20px; z-index: 50; }
 .modal[hidden] { display: none; }
