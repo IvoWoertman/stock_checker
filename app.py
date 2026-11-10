@@ -27,6 +27,19 @@ def inventory():
     return jsonify(service.list_inventory())
 
 
+@app.get("/api/products/lookup")
+def product_lookup():
+    code = (request.args.get("code") or "").strip()
+    if not code:
+        return jsonify({"error": "code is required"}), 400
+    return jsonify({"product": service.lookup_product(code)})
+
+
+@app.get("/api/products/<product_id>/lots")
+def product_lots(product_id):
+    return jsonify(service.list_lots(product_id))
+
+
 @app.get("/api/lots/<lot_id>")
 def lot_detail(lot_id):
     return jsonify({
@@ -61,9 +74,24 @@ def create_lot():
         location=payload.get("location"),
         notes=payload.get("notes"),
         actor=payload.get("actor"),
+        shelf_life_days=payload.get("shelf_life_days"),
         op_id=payload.get("op_id"),
     )
     return jsonify(result), 201
+
+
+def _run_lot_action(lot_id, fn):
+    payload = request.get_json(force=True) or {}
+    try:
+        result = fn(
+            lot_id=lot_id,
+            actor=payload.get("actor"),
+            note=payload.get("note"),
+            op_id=payload.get("op_id"),
+        )
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 409
+    return jsonify(result)
 
 
 @app.post("/api/lots/<lot_id>/use")
@@ -104,6 +132,11 @@ def remaining_lot(lot_id):
     except ValueError as error:
         return jsonify({"error": str(error)}), 409
     return jsonify(result)
+
+
+@app.post("/api/lots/<lot_id>/discard")
+def discard_lot(lot_id):
+    return _run_lot_action(lot_id, service.discard)
 
 
 @app.errorhandler(KeyError)

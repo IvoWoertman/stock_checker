@@ -1,17 +1,16 @@
 """Business logic: inventory reads and atomic writes.
 
-The multi-table atomic writes use the Databricks SQL Connector with
-`autocommit=False` and the standard DB-API commit/rollback model. This is the
-documented pattern for interactive transactions on a SQL warehouse. The
-milestone-1 spike must confirm multi-table atomicity; if `autocommit=False`
-alone does not yield it, fall back to explicit `BEGIN TRANSACTION ... COMMIT`
-(or the non-interactive `BEGIN ATOMIC ... END`) form.
+Multi-table atomic writes use the Databricks SQL Connector with
+`autocommit=False` and the DB-API commit/rollback model (see db.atomic). The
+milestone-1 spike must confirm multi-table atomicity; if it is not honored,
+fall back to explicit `BEGIN TRANSACTION ... COMMIT` or `BEGIN ATOMIC ... END`.
 """
 import uuid
 from contextlib import contextmanager
-from datetime import date
+from datetime import date, timedelta
 
 import db
+from catalog import categorize, normalize_name
 
 
 @contextmanager
@@ -38,9 +37,17 @@ def _is_conflict(error: Exception) -> bool:
     return "concurrent" in message or "conflict" in message
 
 
+# ---- reads ---------------------------------------------------------------
+
 def list_inventory():
+    """Product-level overview: one row per product with a stock balance."""
+    return db.rows(f"SELECT * FROM {db.fq('v_product_stock')} ORDER BY name ASC")
+
+
+def list_lots(product_id: str):
     return db.rows(
-        f"SELECT * FROM {db.fq('v_current_lot_stock')} ORDER BY added_date ASC"
+        f"SELECT * FROM {db.fq('v_active_lot_stock')} WHERE product_id = ? ORDER BY added_date ASC",
+        [product_id],
     )
 
 
@@ -58,6 +65,17 @@ def lot_history(lot_id: str):
     )
 
 
+def lookup_product(code: str):
+    """Find a product by its barcode (GTIN/EAN)."""
+    return db.one(
+        f"SELECT product_id, name, category, usual_package_size_g, default_best_before_days "
+        f"FROM {db.fq('products')} WHERE gtin = ? LIMIT 1",
+        [code],
+    )
+
+
+# ---- writes --------------------------------------------------------------
+
 def _already_processed(op_id: str):
     return db.one(
         f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = ? LIMIT 1",
@@ -65,8 +83,40 @@ def _already_processed(op_id: str):
     )
 
 
+def _get_or_create_product(cur, *, name, gtin, shelf_life_days):
+    """Return (product_id, default_best_before_days) for a product, matching by
+    barcode first, then canonical name, else creating it."""
+    key = normalize_name(name)
+    category = categorize(name)
+    if gtin:
+        cur.execute(
+            f"SELECT product_id, default_best_before_days FROM {db.fq('products')} WHERE gtin = ? LIMIT 1",
+            [gtin],
+        )
+        row = cur.fetchone()
+        if row:
+            return row[0], row[1]
+    cur.execute(
+        f"SELECT product_id, default_best_before_days FROM {db.fq('products')} WHERE name_key = ? LIMIT 1",
+        [key],
+    )
+    row = cur.fetchone()
+    if row:
+        return row[0], row[1]
+
+    product_id = str(uuid.uuid4())
+    cur.execute(
+        f"INSERT INTO {db.fq('products')} "
+        "(product_id, name, brand, gtin, preferred_unit, usual_package_size_g, "
+        " name_key, category, default_best_before_days, created_at, updated_at) "
+        "VALUES (?, ?, NULL, ?, 'g', NULL, ?, ?, ?, current_timestamp(), current_timestamp())",
+        [product_id, name, gtin, key, category, shelf_life_days],
+    )
+    return product_id, shelf_life_days
+
+
 def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
-            location=None, notes=None, actor=None, op_id=None):
+            location=None, notes=None, actor=None, shelf_life_days=None, op_id=None):
     """Create a product if needed, a lot, and its stock-in event, atomically."""
     op_id = op_id or str(uuid.uuid4())
     processed = _already_processed(op_id)
@@ -74,37 +124,28 @@ def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
         return {"lot_id": processed["lot_id"], "duplicate": True}
 
     qty_g = float(qty_g)
-    added_date = added_date or date.today().isoformat()
-    product_id = str(uuid.uuid4())
+    added = date.fromisoformat(added_date) if added_date else date.today()
     lot_id = str(uuid.uuid4())
 
     with atomic() as cur:
-        if gtin:
-            cur.execute(
-                f"SELECT product_id FROM {db.fq('products')} WHERE gtin = ? LIMIT 1",
-                [gtin],
-            )
-        else:
-            cur.execute(
-                f"SELECT product_id FROM {db.fq('products')} WHERE lower(name) = lower(?) LIMIT 1",
-                [name],
-            )
-        row = cur.fetchone()
-        if row:
-            product_id = row[0]
-        else:
-            cur.execute(
-                f"INSERT INTO {db.fq('products')} "
-                "(product_id, name, brand, gtin, preferred_unit, usual_package_size_g, created_at, updated_at) "
-                "VALUES (?, ?, NULL, ?, 'g', CAST(? AS DECIMAL(10,2)), current_timestamp(), current_timestamp())",
-                [product_id, name, gtin, qty_g],
-            )
+        product_id, default_bbd = _get_or_create_product(
+            cur, name=name, gtin=gtin, shelf_life_days=shelf_life_days
+        )
+        if best_before is None and default_bbd is not None:
+            best_before = (added + timedelta(days=int(default_bbd))).isoformat()
+
+        # Remember the last-added package size so the next add is prefilled.
+        cur.execute(
+            f"UPDATE {db.fq('products')} SET usual_package_size_g = CAST(? AS DECIMAL(10,2)), "
+            "updated_at = current_timestamp() WHERE product_id = ?",
+            [qty_g, product_id],
+        )
 
         cur.execute(
             f"INSERT INTO {db.fq('lots')} "
             "(lot_id, product_id, added_date, best_before_date, location, notes, created_at) "
             "VALUES (?, ?, CAST(? AS DATE), CAST(? AS DATE), ?, ?, current_timestamp())",
-            [lot_id, product_id, added_date, best_before, location, notes],
+            [lot_id, product_id, added.isoformat(), best_before, location, notes],
         )
 
         cur.execute(
@@ -117,7 +158,12 @@ def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
     return {"lot_id": lot_id, "product_id": product_id, "duplicate": False}
 
 
-def _apply_delta(*, lot_id, delta, event_type, method, actor, note, op_id):
+def _record(*, lot_id, delta=None, target=None, event_type, method, actor, note, op_id):
+    """Insert one ledger event, validating the balance, with retry on conflict.
+
+    Exactly one of `delta` (relative) or `target` (absolute grams remaining)
+    must be given.
+    """
     op_id = op_id or str(uuid.uuid4())
     processed = _already_processed(op_id)
     if processed:
@@ -131,11 +177,12 @@ def _apply_delta(*, lot_id, delta, event_type, method, actor, note, op_id):
                     [lot_id],
                 )
                 balance = float(cur.fetchone()[0])
+                if target is not None:
+                    delta = target - balance
                 new_balance = balance + delta
                 if new_balance < -1e-9:
                     raise ValueError(
-                        f"Not enough stock: about {balance:g} g available, "
-                        f"{abs(delta):g} g requested"
+                        f"Not enough stock: about {balance:g} g available"
                     )
                 cur.execute(
                     f"INSERT INTO {db.fq('inventory_events')} "
@@ -153,29 +200,31 @@ def _apply_delta(*, lot_id, delta, event_type, method, actor, note, op_id):
 
 
 def record_use(*, lot_id, grams_used, method="ESTIMATE", actor=None, note=None, op_id=None):
-    return _apply_delta(
-        lot_id=lot_id,
-        delta=-float(grams_used),
-        event_type="USE",
-        method=method,
-        actor=actor,
-        note=note,
-        op_id=op_id,
+    return _record(
+        lot_id=lot_id, delta=-float(grams_used), event_type="USE",
+        method=method, actor=actor, note=note, op_id=op_id,
     )
 
 
 def set_remaining(*, lot_id, grams_remaining, method="ESTIMATE", actor=None, note=None, op_id=None):
     grams_remaining = float(grams_remaining)
-    current = get_lot(lot_id)
-    if current is None:
+    if grams_remaining < 0:
+        raise ValueError("Grams remaining cannot be negative.")
+    return _record(
+        lot_id=lot_id, target=grams_remaining, event_type="ADJUST",
+        method=method, actor=actor,
+        note=note or f"Set remaining to {grams_remaining:g} g", op_id=op_id,
+    )
+
+
+def discard(*, lot_id, actor=None, note=None, op_id=None):
+    """Throw away everything that remains (distinct from using it)."""
+    lot = get_lot(lot_id)
+    if lot is None:
         raise ValueError(f"Unknown lot: {lot_id}")
-    delta = grams_remaining - float(current["grams_remaining"])
-    return _apply_delta(
-        lot_id=lot_id,
-        delta=delta,
-        event_type="ADJUST",
-        method=method,
-        actor=actor,
-        note=note or f"Set remaining to {grams_remaining:g} g",
-        op_id=op_id,
+    if float(lot["grams_remaining"]) <= 0:
+        return {"lot_id": lot_id, "grams_remaining": 0, "duplicate": False}
+    return _record(
+        lot_id=lot_id, target=0, event_type="DISCARD", method="ESTIMATE",
+        actor=actor, note=note or "Discarded remaining", op_id=op_id,
     )

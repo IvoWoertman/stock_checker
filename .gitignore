@@ -1,8 +1,12 @@
 # Python
 __pycache__/
 *.py[cod]
+*$py.class
 .venv/
 venv/
+env/
+.eggs/
+*.egg-info/
 
 # Node / frontend build artifacts
 node_modules/
@@ -16,14 +20,24 @@ build/
 .databrickscfg
 *.pem
 *.key
+*.crt
 
 # Editor and OS files
 .DS_Store
 .idea/
 .vscode/
 *.swp
+*~
 
 # Test and coverage output
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.tox/
 .coverage
+coverage.xml
 htmlcov/
+
+# Tooling
+.python-version
+.cache/

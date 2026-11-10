@@ -10,12 +10,16 @@
   <body>
     <header class="topbar">
       <h1>Stock</h1>
-      <span class="status" id="status" title="API connection">…</span>
+      <div class="top-actions">
+        <span class="status" id="status" title="API connection">…</span>
+        <button class="icon-btn" id="scan-btn" title="Scan barcode">📷</button>
+        <button class="icon-btn" id="refresh" title="Refresh">↻</button>
+      </div>
     </header>
 
     <main>
       <section class="add-panel">
-        <h2>Put something in</h2>
+        <h2>Add stock</h2>
         <form id="add-form" autocomplete="off">
           <label>
             <span>Name</span>
@@ -33,22 +37,40 @@
           </div>
           <label>
             <span>Barcode (optional)</span>
-            <input name="gtin" type="text" inputmode="numeric" placeholder="EAN / GTIN" />
+            <div class="code-row">
+              <input name="gtin" type="text" inputmode="numeric" placeholder="EAN / GTIN" />
+              <button type="button" class="scan-inline" id="scan-inline">Scan</button>
+            </div>
           </label>
-          <button type="submit">Add to stock</button>
+          <label>
+            <span>Shelf life, days (optional)</span>
+            <input name="shelf_life_days" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g. 90" />
+          </label>
+          <button type="submit">Add</button>
         </form>
       </section>
 
       <section class="inventory">
         <div class="inventory-head">
-          <h2>In the stock</h2>
-          <button id="refresh" type="button">Refresh</button>
+          <h2>In stock</h2>
         </div>
-        <div id="inventory" class="lot-list" aria-live="polite"></div>
+        <div id="inventory" class="product-list" aria-live="polite"></div>
       </section>
     </main>
 
+    <div class="modal" id="scan-modal" hidden>
+      <div class="modal-card">
+        <div class="modal-head">
+          <h2>Scan a barcode</h2>
+          <button class="icon-btn" id="scan-close" aria-label="Close">×</button>
+        </div>
+        <div id="qr-reader"></div>
+        <p class="scan-hint" id="scan-status">Point the camera at a package barcode or a label QR.</p>
+      </div>
+    </div>
+
     <div class="toast" id="toast" role="status"></div>
+    <script src="/static/vendor/html5-qrcode.min.js"></script>
     <script src="/static/app.js"></script>
   </body>
 </html>

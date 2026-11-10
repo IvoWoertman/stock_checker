@@ -11,29 +11,42 @@ First slice built: lakehouse schema, a Flask app with atomic inventory writes, a
 ## Layout
 
 ```
-app.yaml            Databricks App runtime config (gunicorn + port)
-requirements.txt    Python dependencies
-app.py              Flask app and JSON API routes
-db.py               Databricks SQL connection + query helpers
-service.py          Business logic and atomic writes
-sql/schema.sql      Lakehouse DDL (managed Delta tables + stock view)
-sql/seed.sql        Sample data for testing
-static/             Phone-first HTML/JS/CSS frontend
-.env.example        Local-dev environment variables (not committed)
+app.yaml              Databricks App runtime config (gunicorn + port)
+requirements.txt      Python dependencies
+requirements-dev.txt  Test/lint dependencies (CI only)
+app.py                Flask app and JSON API routes
+db.py                 Databricks SQL connection + query helpers
+service.py            Business logic and atomic writes
+catalog.py            Name normalization + auto-categorization
+sql/schema.sql        Lakehouse DDL (managed Delta tables + views)
+sql/migrate.sql       Additive migration for an existing schema
+sql/seed.sql          Sample data for testing
+static/               Phone-first HTML/JS/CSS frontend (incl. barcode scanner)
+tests/                Unit and integration tests
+.github/workflows     CI (lint + test on push/PR)
+.env.example          Local-dev environment variables (not committed)
 ```
 
 ## Data model
 
-- `products` — what a package contains (name, optional GTIN/EAN).
+- `products` — what a package contains (name, optional GTIN/EAN, `name_key` for
+  matching "ground beef" with "beef", auto-assigned `category`, and optional
+  `default_best_before_days`).
 - `lots` — one physical package; `lot_id` doubles as the QR label payload.
-- `inventory_events` — append-only ledger; current stock is the sum of `quantity_delta_g` per lot.
-- `v_current_lot_stock` — view that derives grams remaining per lot.
+- `inventory_events` — append-only ledger; current stock is the sum of
+  `quantity_delta_g` per lot. `DISCARD` events track waste separately from use.
+- `v_current_lot_stock` — grams remaining per lot (all lots).
+- `v_active_lot_stock` — active lots only (grams remaining > 0).
+- `v_product_stock` — product-level overview (package count + total grams).
 
-All tables are Unity Catalog **managed Delta** tables with **catalog commits** enabled so the app's writes can span multiple tables atomically.
+All tables are Unity Catalog **managed Delta** tables with **catalog commits**
+enabled so the app's writes can span multiple tables atomically.
 
 ## Deploy to Databricks
 
-1. In your workspace, run `sql/schema.sql` (once) in the SQL editor to create the tables and view. Optionally run `sql/seed.sql` to add sample data.
+1. In your workspace, run `sql/schema.sql` (once) in the SQL editor to create
+   the tables and views. For an existing schema, run `sql/migrate.sql` instead.
+   Optionally run `sql/seed.sql` to add sample data.
 2. Create a Databricks App from this repository (or workspace folder).
 3. Attach a **SQL warehouse** as an app resource. Databricks injects the connection details and grants the app's service principal.
 4. Grant the app's service principal `SELECT` and `MODIFY` on `main.stock` and `CAN USE` on the warehouse.
