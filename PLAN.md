@@ -103,7 +103,16 @@ Stock-in is a positive event; use/discard are negative events; adjustments are s
 - Free Edition currently permits up to three Apps and provides serverless compute, but an App is automatically stopped after 24 hours and must be restarted. Free Edition quotas are subject to fair use and can make compute unavailable temporarily; it has no SLA.
 - Persisted Delta data remains in the workspace when the App stops. The app’s availability is the main household-use caveat, not the storage size or two-person write volume.
 - Verify in the actual workspace that the app can bind to a SQL Warehouse, that interactive transactions and catalog commits are available, and that the second user can open the shared app. These are early feasibility checks.
-- Keep the initial workload to interactive reads/writes and occasional manual analytics. Do not add a polling loop or scheduled job just to keep the app alive.
+- Keep the initial workload to interactive reads/writes and occasional manual analytics.
+
+### Keep-alive decision and risk
+
+The 24-hour auto-stop can be worked around by automatically triggering one of the events that resets the timer ("started", "updated", or "redeployed") on a schedule. The plan is to try a **scheduled keep-alive Job** as a learning exercise, with explicit guardrails:
+
+- **Mechanism:** a Databricks Job runs every ~23 hours and calls the Apps API/CLI to restart (or, if required, redeploy) the app. The job's identity needs `CAN MANAGE` on the app. Free Edition permits up to 5 concurrent job tasks, so one low-frequency job is within limits.
+- **Open question to validate first:** whether a plain `apps start` on an already-running app resets the 24-hour timer. If it does not, fall back to a no-change redeploy, which does reset it (at the cost of a build/deploy cycle and a brief unavailability window).
+- **Policy risk:** this deliberately defeats an intentional Free Edition cost-control and pushes against the broad fair-usage policy. The documented remedy for exceeding quotas is that compute can be shut down for the rest of the day or month. The keep-alive is treated as an experiment, not as the basis for reliability.
+- **Guardrail:** the household must not treat the app as its dependable sole inventory record on the strength of a keep-alive. Availability remains best-effort, and either user must be able to fall back to a manual restart in the workspace.
 
 ## 8. Build and validation milestones
 
@@ -113,7 +122,8 @@ Stock-in is a positive event; use/discard are negative events; adjustments are s
 4. **Ledger and transactions:** implement add/use/adjust/discard, idempotency, nonnegative-balance checks, conflict handling, and audit history.
 5. **Scanning and labels:** add browser camera scanning for QR and EAN/GTIN formats, unknown-code flow, and package QR label printing. Test on the actual phones and freezer lighting/labels.
 6. **Hardening:** test concurrent use by both people, transaction rollback on errors, repeat submissions, camera denial/manual entry, stale app restart, CSV export, and data recovery using Delta history/backup procedures.
-7. **Optional analytics:** build a small Databricks SQL dashboard or notebook from the Delta event data; only add automation if Free Edition usage allows it.
+7. **Keep-alive experiment (optional, gated):** validate whether `apps start` resets the 24-hour timer on a running app; if it does not, test a no-change redeploy. Then create a scheduled Job (~23-hour interval) with `CAN MANAGE` on the app, and confirm the app survives a multi-day period. Record whether this stays within fair-use and revisit the policy risk before relying on it.
+8. **Optional analytics:** build a small Databricks SQL dashboard or notebook from the Delta event data; only add automation if Free Edition usage allows it.
 
 ## 9. MVP acceptance criteria
 
@@ -125,6 +135,7 @@ Stock-in is a positive event; use/discard are negative events; adjustments are s
 - Both users can see each other’s committed updates, and the app records the actor when identity is available.
 - All inventory persists in Unity Catalog managed Delta tables after an App stop/restart; no home server is required.
 - The Free Edition 24-hour stop and restart behavior is understood and acceptable to both users before treating this as the household’s sole inventory record.
+- If a keep-alive Job is used, it is treated as an experiment; the app is not considered dependable solely because a keep-alive exists, and manual restart remains a known fallback.
 
 ## 10. References
 
