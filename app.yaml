@@ -10,3 +10,6 @@ command:
   - sh
   - -c
   - exec gunicorn -w 2 -b 0.0.0.0:${DATABRICKS_APP_PORT:-8080} app:app
+env:
+  - name: ENDPOINT_NAME
+    valueFrom: postgres

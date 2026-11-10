@@ -7,6 +7,7 @@ automatically, so no credentials live in code. For local development, set
 ``DATABASE_URL`` instead.
 """
 import os
+import time
 from contextlib import closing
 from datetime import date as _date
 from datetime import datetime as _datetime
@@ -14,6 +15,7 @@ from datetime import time as _time
 from decimal import Decimal
 
 import psycopg2
+from databricks.sdk import WorkspaceClient
 
 SCHEMA = os.environ.get("PG_SCHEMA", "stock")
 
@@ -105,13 +107,42 @@ def fq(table: str) -> str:
     return f"{SCHEMA}.{table}"
 
 
+_workspace_client = None
+_token_cache = {"token": None, "expires": 0.0}
+
+
+def _get_workspace_client():
+    global _workspace_client
+    if _workspace_client is None:
+        host = os.environ["DATABRICKS_HOST"]
+        if not host.startswith(("http://", "https://")):
+            host = "https://" + host
+        _workspace_client = WorkspaceClient(
+            host=host,
+            client_id=os.environ["DATABRICKS_CLIENT_ID"],
+            client_secret=os.environ["DATABRICKS_CLIENT_SECRET"],
+        )
+    return _workspace_client
+
+
+def _database_password():
+    """Mint a short-lived Lakebase database credential (OAuth token), cached."""
+    now = time.time()
+    if _token_cache["token"] and now < _token_cache["expires"]:
+        return _token_cache["token"]
+    endpoint = os.environ["ENDPOINT_NAME"]
+    credential = _get_workspace_client().postgres.generate_database_credential(endpoint=endpoint)
+    _token_cache["token"] = credential.token
+    _token_cache["expires"] = now + 50 * 60  # tokens live 60 min; refresh early
+    return credential.token
+
+
 def connect(autocommit: bool = True):
     """Open a Postgres connection.
 
-    In the app runtime, psycopg2 reads PGHOST/PGPORT/PGDATABASE/PGUSER/
-    PGPASSWORD from the environment. Locally, DATABASE_URL takes precedence.
-    Managed Postgres requires SSL, so default sslmode to ``require`` unless
-    overridden by PGSSLMODE.
+    In the app runtime, psycopg2 reads PGHOST/PGPORT/PGDATABASE/PGUSER from the
+    environment; the password is a Lakebase OAuth database credential minted via
+    the Databricks SDK. Locally, DATABASE_URL takes precedence.
     """
     dsn = os.environ.get("DATABASE_URL")
     if dsn:
@@ -122,7 +153,14 @@ def connect(autocommit: bool = True):
                 "No database connection configured: attach the Lakebase "
                 "database resource to the app and redeploy (PGHOST is missing)."
             )
-        conn = psycopg2.connect(sslmode=os.environ.get("PGSSLMODE", "require"))
+        conn = psycopg2.connect(
+            host=os.environ["PGHOST"],
+            port=os.environ.get("PGPORT", "5432"),
+            dbname=os.environ["PGDATABASE"],
+            user=os.environ["PGUSER"],
+            password=_database_password(),
+            sslmode=os.environ.get("PGSSLMODE", "require"),
+        )
     conn.autocommit = autocommit
     return conn
 
