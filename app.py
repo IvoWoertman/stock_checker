@@ -3,6 +3,7 @@ import os
 from contextlib import suppress
 
 from flask import Flask, jsonify, request, send_from_directory
+from werkzeug.exceptions import HTTPException
 
 import db
 import service
@@ -26,8 +27,17 @@ def index():
 
 @app.get("/health")
 def health():
-    db.one("SELECT 1 AS ok")
+    db.bootstrap()
+    db.one(f"SELECT 1 AS ok FROM {db.fq('v_product_stock')} LIMIT 1")
     return jsonify({"status": "ok"})
+
+
+@app.errorhandler(Exception)
+def handle_uncaught(error):
+    if isinstance(error, HTTPException):
+        return error
+    app.logger.exception("Unhandled error")
+    return jsonify({"error": str(error)}), 500
 
 
 @app.get("/api/inventory")

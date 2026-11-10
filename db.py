@@ -110,9 +110,14 @@ def connect(autocommit: bool = True):
 
     In the app runtime, psycopg2 reads PGHOST/PGPORT/PGDATABASE/PGUSER/
     PGPASSWORD from the environment. Locally, DATABASE_URL takes precedence.
+    Managed Postgres requires SSL, so default sslmode to ``require`` unless
+    overridden by PGSSLMODE.
     """
     dsn = os.environ.get("DATABASE_URL")
-    conn = psycopg2.connect(dsn) if dsn else psycopg2.connect()
+    if dsn:
+        conn = psycopg2.connect(dsn)
+    else:
+        conn = psycopg2.connect(sslmode=os.environ.get("PGSSLMODE", "require"))
     conn.autocommit = autocommit
     return conn
 

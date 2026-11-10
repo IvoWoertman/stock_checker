@@ -24,6 +24,13 @@ class FakeCursor:
     def close(self):
         pass
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
+
 
 class FakeConnection:
     def __init__(self, cursor):
@@ -42,6 +49,13 @@ class FakeConnection:
 
     def close(self):
         pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+        return False
 
 
 class FakeDb:
