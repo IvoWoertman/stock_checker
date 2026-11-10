@@ -34,6 +34,26 @@ def _service_principal_provider():
     return oauth_service_principal(config)
 
 
+def _http_path():
+    """Resolve the warehouse HTTP path.
+
+    Databricks injects DATABRICKS_SERVER_HOSTNAME and the service-principal
+    OAuth credentials as default environment variables. The warehouse is
+    referenced by ID (see app.yaml `valueFrom: sql-warehouse`), so the HTTP
+    path is built from that ID unless DATABRICKS_HTTP_PATH is set directly
+    (for local development or if Databricks provides it).
+    """
+    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
+    if http_path:
+        return http_path
+    warehouse_id = os.environ.get("DATABRICKS_WAREHOUSE_ID")
+    if warehouse_id:
+        return f"/sql/1.0/warehouses/{warehouse_id}"
+    raise KeyError(
+        "Set DATABRICKS_HTTP_PATH or DATABRICKS_WAREHOUSE_ID to connect to a SQL warehouse."
+    )
+
+
 def connect(autocommit: bool = True):
     """Open a connection to the SQL warehouse.
 
@@ -45,7 +65,7 @@ def connect(autocommit: bool = True):
     """
     kwargs = {
         "server_hostname": os.environ["DATABRICKS_SERVER_HOSTNAME"],
-        "http_path": os.environ["DATABRICKS_HTTP_PATH"],
+        "http_path": _http_path(),
         "user_agent_entry": "freezer-tracker",
     }
     if os.environ.get("DATABRICKS_CLIENT_ID") and os.environ.get("DATABRICKS_CLIENT_SECRET"):
