@@ -13,7 +13,9 @@ Build a small, phone-first freezer inventory app for two household members. It s
 - **Use the lakehouse for real:** persist data in Unity Catalog managed Delta tables and use Databricks transactions for atomic inventory operations.
 - **Free Edition first:** keep to one app, one small schema, and light serverless SQL usage; avoid always-on or streaming infrastructure.
 
-## 3. Proposed architecture
+## 3. Architecture: Databricks lakehouse
+
+The system runs on the Databricks lakehouse. All inventory data lives in Unity Catalog managed Delta tables, which serve as both the transactional system of record and the analytics layer.
 
 ```text
 Phone browser (HTTPS; optionally add to home screen)
