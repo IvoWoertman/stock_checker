@@ -10,9 +10,18 @@ app = Flask(__name__)
 
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 
+_bootstrapped = False
+
 
 @app.get("/")
 def index():
+    global _bootstrapped
+    if not _bootstrapped:
+        try:
+            db.bootstrap()
+            _bootstrapped = True
+        except Exception:
+            pass
     return send_from_directory(STATIC_DIR, "index.html")
 
 
@@ -137,15 +146,6 @@ def remaining_lot(lot_id):
 @app.post("/api/lots/<lot_id>/discard")
 def discard_lot(lot_id):
     return _run_lot_action(lot_id, service.discard)
-
-
-@app.errorhandler(KeyError)
-def handle_missing_env(error):
-    return jsonify({
-        "error": "App is missing Databricks connection details "
-                 "(DATABRICKS_HOST and a SQL warehouse resource). Attach the "
-                 "SQL warehouse resource and redeploy."
-    }), 500
 
 
 if __name__ == "__main__":

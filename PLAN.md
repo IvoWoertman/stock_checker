@@ -13,26 +13,34 @@ Build a small, phone-first stock inventory app for two household members. It sho
 - **Use the lakehouse for real:** persist data in Unity Catalog managed Delta tables and use Databricks transactions for atomic inventory operations.
 - **Free Edition first:** keep to one app, one small schema, and light serverless SQL usage; avoid always-on or streaming infrastructure.
 
-## 3. Architecture: Databricks lakehouse
+## 3. Architecture: Lakebase (Postgres) for the app, Delta for analytics
 
-The system runs on the Databricks lakehouse. All inventory data lives in Unity Catalog managed Delta tables, which serve as both the transactional system of record and the analytics layer.
+> **Update:** the app's live data moved from Delta + SQL warehouse to **Lakebase
+> (Postgres)** because the serverless SQL warehouse's cold-start made point
+> writes feel slow (20 s after idle). Lakebase scales to zero with a much
+> faster wake-up.
+
+The app reads and writes a managed Postgres database (Lakebase) for low-latency
+interactions. Analytics later is served by registering Lakebase in Unity Catalog
+or streaming its changes into Delta.
 
 ```text
 Phone browser (HTTPS; optionally add to home screen)
         │
         ▼
-Databricks App (responsive UI + API, Python and web camera-scanning component)
-        │  Databricks SQL Connector; app service identity
+Databricks App (responsive UI + API, Python)
+        │  psycopg2; PG* env vars injected by Databricks
         ▼
-Serverless SQL Warehouse
-        │
-        ▼
-Unity Catalog managed Delta tables (ACID; catalog commits enabled)
+Lakebase (managed Postgres) ──(register in UC / CDC)──▶ Delta for analytics
 ```
 
 The app is a hosted web app, not an app-store-native phone app. It can request camera access from the phone browser over HTTPS. The initial UI should be a responsive web interface; install-to-home-screen support is a later enhancement, not a dependency.
 
-**ACID decision:** use Delta Lake tables as the system of record, rather than adding Lakebase in the first version. Databricks supports multi-statement, multi-table transactions on Unity Catalog managed tables with catalog commits enabled. The app will perform writes through a SQL Warehouse transaction and commit an inventory change and its corresponding ledger event atomically. This directly meets the lakehouse learning goal and avoids introducing a second database. If Free Edition does not expose the required transaction features in the workspace, stop and validate that constraint before implementing the write flows; do not silently fall back to non-atomic writes.
+**ACID decision:** Lakebase (Postgres) provides real ACID transactions with
+enforced primary/foreign keys and CHECK constraints. The app performs writes in
+native Postgres transactions (commit/rollback) and validates business rules in
+the transaction. Delta remains the analytics target, reached later via Unity
+Catalog registration or change-data-capture.
 
 Transactions use optimistic concurrency. If both people make conflicting changes at the same time, the app should refresh the lot balance, revalidate the requested use, and ask the user to retry if necessary. Every submission gets an operation ID so retries after a slow connection do not intentionally create duplicate events.
 

@@ -1,9 +1,8 @@
 """Business logic: inventory reads and atomic writes.
 
-Multi-table atomic writes use the Databricks SQL Connector with
-`autocommit=False` and the DB-API commit/rollback model (see db.atomic). The
-milestone-1 spike must confirm multi-table atomicity; if it is not honored,
-fall back to explicit `BEGIN TRANSACTION ... COMMIT` or `BEGIN ATOMIC ... END`.
+Writes run in native Postgres transactions (see ``atomic``): all statements in
+a block commit together or roll back together. Primary/foreign keys and CHECK
+constraints in Postgres enforce integrity at the database level.
 """
 import uuid
 from contextlib import contextmanager, suppress
@@ -44,21 +43,21 @@ def list_inventory():
 
 def list_lots(product_id: str):
     return db.rows(
-        f"SELECT * FROM {db.fq('v_active_lot_stock')} WHERE product_id = ? ORDER BY added_date ASC",
+        f"SELECT * FROM {db.fq('v_active_lot_stock')} WHERE product_id = %s ORDER BY added_date ASC",
         [product_id],
     )
 
 
 def get_lot(lot_id: str):
     return db.one(
-        f"SELECT * FROM {db.fq('v_current_lot_stock')} WHERE lot_id = ?",
+        f"SELECT * FROM {db.fq('v_current_lot_stock')} WHERE lot_id = %s",
         [lot_id],
     )
 
 
 def lot_history(lot_id: str):
     return db.rows(
-        f"SELECT * FROM {db.fq('inventory_events')} WHERE lot_id = ? ORDER BY event_time ASC",
+        f"SELECT * FROM {db.fq('inventory_events')} WHERE lot_id = %s ORDER BY event_time ASC",
         [lot_id],
     )
 
@@ -67,7 +66,7 @@ def lookup_product(code: str):
     """Find a product by its barcode (GTIN/EAN)."""
     return db.one(
         f"SELECT product_id, name, category, usual_package_size_g, default_best_before_days "
-        f"FROM {db.fq('products')} WHERE gtin = ? LIMIT 1",
+        f"FROM {db.fq('products')} WHERE gtin = %s LIMIT 1",
         [code],
     )
 
@@ -81,14 +80,14 @@ def _get_or_create_product(cur, *, name, gtin, shelf_life_days):
     category = categorize(name)
     if gtin:
         cur.execute(
-            f"SELECT product_id, default_best_before_days FROM {db.fq('products')} WHERE gtin = ? LIMIT 1",
+            f"SELECT product_id, default_best_before_days FROM {db.fq('products')} WHERE gtin = %s LIMIT 1",
             [gtin],
         )
         row = cur.fetchone()
         if row:
             return row[0], row[1]
     cur.execute(
-        f"SELECT product_id, default_best_before_days FROM {db.fq('products')} WHERE name_key = ? LIMIT 1",
+        f"SELECT product_id, default_best_before_days FROM {db.fq('products')} WHERE name_key = %s LIMIT 1",
         [key],
     )
     row = cur.fetchone()
@@ -100,7 +99,7 @@ def _get_or_create_product(cur, *, name, gtin, shelf_life_days):
         f"INSERT INTO {db.fq('products')} "
         "(product_id, name, brand, gtin, preferred_unit, usual_package_size_g, "
         " name_key, category, default_best_before_days, created_at, updated_at) "
-        "VALUES (?, ?, NULL, ?, 'g', NULL, ?, ?, ?, current_timestamp(), current_timestamp())",
+        "VALUES (%s, %s, NULL, %s, 'g', NULL, %s, %s, %s, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)",
         [product_id, name, gtin, key, category, shelf_life_days],
     )
     return product_id, shelf_life_days
@@ -116,7 +115,7 @@ def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
 
     with atomic() as cur:
         cur.execute(
-            f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = ? LIMIT 1",
+            f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = %s LIMIT 1",
             [op_id],
         )
         dup = cur.fetchone()
@@ -131,22 +130,22 @@ def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
 
         # Remember the last-added package size so the next add is prefilled.
         cur.execute(
-            f"UPDATE {db.fq('products')} SET usual_package_size_g = CAST(? AS DECIMAL(10,2)), "
-            "updated_at = current_timestamp() WHERE product_id = ?",
+            f"UPDATE {db.fq('products')} SET usual_package_size_g = CAST(%s AS DECIMAL(10,2)), "
+            "updated_at = CURRENT_TIMESTAMP WHERE product_id = %s",
             [qty_g, product_id],
         )
 
         cur.execute(
             f"INSERT INTO {db.fq('lots')} "
             "(lot_id, product_id, added_date, best_before_date, location, notes, created_at) "
-            "VALUES (?, ?, CAST(? AS DATE), CAST(? AS DATE), ?, ?, current_timestamp())",
+            "VALUES (%s, %s, CAST(%s AS DATE), CAST(%s AS DATE), %s, %s, CURRENT_TIMESTAMP)",
             [lot_id, product_id, added.isoformat(), best_before, location, notes],
         )
 
         cur.execute(
             f"INSERT INTO {db.fq('inventory_events')} "
             "(event_id, op_id, lot_id, event_type, quantity_delta_g, event_time, actor, method, note, reversed_event_id) "
-            "VALUES (?, ?, ?, 'STOCK_IN', CAST(? AS DECIMAL(10,2)), current_timestamp(), ?, 'SYSTEM', ?, NULL)",
+            "VALUES (%s, %s, %s, 'STOCK_IN', CAST(%s AS DECIMAL(10,2)), CURRENT_TIMESTAMP, %s, 'SYSTEM', %s, NULL)",
             [str(uuid.uuid4()), op_id, lot_id, qty_g, actor, notes],
         )
 
@@ -165,7 +164,7 @@ def _record(*, lot_id, delta=None, target=None, event_type, method, actor, note,
         try:
             with atomic() as cur:
                 cur.execute(
-                    f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = ? LIMIT 1",
+                    f"SELECT lot_id FROM {db.fq('inventory_events')} WHERE op_id = %s LIMIT 1",
                     [op_id],
                 )
                 dup = cur.fetchone()
@@ -173,7 +172,7 @@ def _record(*, lot_id, delta=None, target=None, event_type, method, actor, note,
                     return {"lot_id": dup[0], "duplicate": True}
 
                 cur.execute(
-                    f"SELECT COALESCE(SUM(quantity_delta_g), 0) FROM {db.fq('inventory_events')} WHERE lot_id = ?",
+                    f"SELECT COALESCE(SUM(quantity_delta_g), 0) FROM {db.fq('inventory_events')} WHERE lot_id = %s",
                     [lot_id],
                 )
                 balance = float(cur.fetchone()[0])
@@ -187,7 +186,7 @@ def _record(*, lot_id, delta=None, target=None, event_type, method, actor, note,
                 cur.execute(
                     f"INSERT INTO {db.fq('inventory_events')} "
                     "(event_id, op_id, lot_id, event_type, quantity_delta_g, event_time, actor, method, note, reversed_event_id) "
-                    "VALUES (?, ?, ?, ?, CAST(? AS DECIMAL(10,2)), current_timestamp(), ?, ?, ?, NULL)",
+                    "VALUES (%s, %s, %s, %s, CAST(%s AS DECIMAL(10,2)), CURRENT_TIMESTAMP, %s, %s, %s, NULL)",
                     [str(uuid.uuid4()), op_id, lot_id, event_type, delta, actor, method, note],
                 )
             return {"lot_id": lot_id, "grams_remaining": new_balance, "duplicate": False}

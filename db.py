@@ -1,11 +1,10 @@
-"""Connection and query helpers for the Databricks lakehouse.
+"""Connection and query helpers for the Lakebase (Postgres) database.
 
-Inside a Databricks App, Databricks provisions a service principal and injects
-these environment variables: DATABRICKS_HOST (workspace URL), DATABRICKS_CLIENT_ID
-and DATABRICKS_CLIENT_SECRET (service-principal OAuth). A SQL warehouse attached
-as an app resource is exposed by ID (see app.yaml `valueFrom: sql-warehouse`).
-For local development, set DATABRICKS_TOKEN (a personal access token) plus
-DATABRICKS_SERVER_HOSTNAME and DATABRICKS_HTTP_PATH. See .env.example.
+Inside a Databricks App, attaching a Lakebase database as an app resource makes
+Databricks inject the standard libpq environment variables (PGHOST, PGPORT,
+PGDATABASE, PGUSER, PGPASSWORD). ``psycopg2.connect()`` reads those
+automatically, so no credentials live in code. For local development, set
+``DATABASE_URL`` instead.
 """
 import os
 from datetime import date as _date
@@ -13,88 +12,126 @@ from datetime import datetime as _datetime
 from datetime import time as _time
 from decimal import Decimal
 
-from databricks import sql
+import psycopg2
+import psycopg2.extras
 
-CATALOG = os.environ.get("DATABRICKS_CATALOG", "main")
-SCHEMA = os.environ.get("DATABRICKS_SCHEMA", "stock")
+SCHEMA = os.environ.get("PG_SCHEMA", "stock")
+
+# Schema DDL, run idempotently by bootstrap() on first page load.
+_DDL = [
+    f"CREATE SCHEMA IF NOT EXISTS {SCHEMA}",
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.products (
+      product_id             TEXT PRIMARY KEY,
+      name                   TEXT NOT NULL,
+      brand                  TEXT,
+      gtin                   TEXT,
+      preferred_unit         TEXT NOT NULL,
+      usual_package_size_g   NUMERIC(10,2),
+      name_key               TEXT,
+      category               TEXT,
+      default_best_before_days INTEGER,
+      created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
+      updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.lots (
+      lot_id           TEXT PRIMARY KEY,
+      product_id       TEXT NOT NULL REFERENCES {SCHEMA}.products(product_id),
+      added_date       DATE NOT NULL,
+      best_before_date DATE,
+      location         TEXT,
+      notes            TEXT,
+      created_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+    )
+    """,
+    f"""
+    CREATE TABLE IF NOT EXISTS {SCHEMA}.inventory_events (
+      event_id          TEXT PRIMARY KEY,
+      op_id             TEXT NOT NULL,
+      lot_id            TEXT NOT NULL REFERENCES {SCHEMA}.lots(lot_id),
+      event_type        TEXT NOT NULL,
+      quantity_delta_g  NUMERIC(10,2) NOT NULL,
+      event_time        TIMESTAMPTZ NOT NULL DEFAULT now(),
+      actor             TEXT,
+      method            TEXT NOT NULL,
+      note              TEXT,
+      reversed_event_id TEXT
+    )
+    """,
+    f"ALTER TABLE {SCHEMA}.inventory_events DROP CONSTRAINT IF EXISTS event_type_check",
+    f"ALTER TABLE {SCHEMA}.inventory_events ADD CONSTRAINT event_type_check "
+    "CHECK (event_type IN ('STOCK_IN','USE','ADJUST','DISCARD','REVERSAL'))",
+    f"ALTER TABLE {SCHEMA}.inventory_events DROP CONSTRAINT IF EXISTS method_check",
+    f"ALTER TABLE {SCHEMA}.inventory_events ADD CONSTRAINT method_check "
+    "CHECK (method IN ('ESTIMATE','WEIGHED','CORRECTION','SYSTEM'))",
+    f"""
+    CREATE OR REPLACE VIEW {SCHEMA}.v_current_lot_stock AS
+    SELECT
+      l.lot_id, l.product_id,
+      p.name AS product_name, p.brand, p.gtin,
+      l.added_date, l.best_before_date, l.location, l.notes,
+      COALESCE(SUM(e.quantity_delta_g), 0) AS grams_remaining,
+      MIN(e.event_time) AS first_event_time,
+      MAX(e.event_time) AS last_event_time
+    FROM {SCHEMA}.lots l
+    JOIN {SCHEMA}.products p ON p.product_id = l.product_id
+    LEFT JOIN {SCHEMA}.inventory_events e ON e.lot_id = l.lot_id
+    GROUP BY l.lot_id, l.product_id, p.name, p.brand, p.gtin,
+             l.added_date, l.best_before_date, l.location, l.notes
+    """,
+    f"CREATE OR REPLACE VIEW {SCHEMA}.v_active_lot_stock AS "
+    f"SELECT * FROM {SCHEMA}.v_current_lot_stock WHERE grams_remaining > 0",
+    f"""
+    CREATE OR REPLACE VIEW {SCHEMA}.v_product_stock AS
+    SELECT
+      p.product_id, p.name, p.brand, p.category,
+      COUNT(b.lot_id) AS lot_count,
+      COALESCE(SUM(b.grams_remaining), 0) AS total_grams,
+      MIN(l.added_date) AS oldest_added_date
+    FROM {SCHEMA}.products p
+    JOIN {SCHEMA}.lots l ON l.product_id = p.product_id
+    JOIN (
+      SELECT lot_id, SUM(quantity_delta_g) AS grams_remaining
+      FROM {SCHEMA}.inventory_events
+      GROUP BY lot_id
+      HAVING SUM(quantity_delta_g) > 0
+    ) b ON b.lot_id = l.lot_id
+    GROUP BY p.product_id, p.name, p.brand, p.category
+    """,
+]
 
 
 def fq(table: str) -> str:
-    """Fully-qualified table name in the app's catalog and schema."""
-    return f"{CATALOG}.{SCHEMA}.{table}"
-
-
-def _service_principal_provider(host: str):
-    from databricks.sdk.core import Config, oauth_service_principal
-
-    config = Config(
-        host=host,
-        client_id=os.environ["DATABRICKS_CLIENT_ID"],
-        client_secret=os.environ["DATABRICKS_CLIENT_SECRET"],
-    )
-    return oauth_service_principal(config)
-
-
-def _server_hostname():
-    """Workspace hostname without the URL scheme.
-
-    In the app runtime this comes from DATABRICKS_HOST (a full URL). Locally,
-    DATABRICKS_SERVER_HOSTNAME is set directly.
-    """
-    host = os.environ.get("DATABRICKS_HOST") or os.environ.get("DATABRICKS_SERVER_HOSTNAME")
-    if host:
-        return host.split("://", 1)[-1].rstrip("/")
-    raise KeyError("DATABRICKS_HOST (app runtime) or DATABRICKS_SERVER_HOSTNAME (local) is required.")
-
-
-def _http_path():
-    """Resolve the warehouse HTTP path.
-
-    The warehouse is referenced by ID (see app.yaml `valueFrom: sql-warehouse`),
-    so the HTTP path is built from that ID unless DATABRICKS_HTTP_PATH is set
-    directly (for local development).
-    """
-    http_path = os.environ.get("DATABRICKS_HTTP_PATH")
-    if http_path:
-        return http_path
-    warehouse_id = os.environ.get("DATABRICKS_WAREHOUSE_ID")
-    if warehouse_id:
-        return f"/sql/1.0/warehouses/{warehouse_id}"
-    raise KeyError(
-        "Set DATABRICKS_HTTP_PATH or DATABRICKS_WAREHOUSE_ID to connect to a SQL warehouse."
-    )
+    """Schema-qualified table name."""
+    return f"{SCHEMA}.{table}"
 
 
 def connect(autocommit: bool = True):
-    """Open a connection to the SQL warehouse.
+    """Open a Postgres connection.
 
-    App runtime: service-principal OAuth (DATABRICKS_CLIENT_ID / SECRET) against
-    DATABRICKS_HOST. Local development: personal access token (DATABRICKS_TOKEN).
+    In the app runtime, psycopg2 reads PGHOST/PGPORT/PGDATABASE/PGUSER/
+    PGPASSWORD from the environment. Locally, DATABASE_URL takes precedence.
     """
-    client_id = os.environ.get("DATABRICKS_CLIENT_ID")
-    client_secret = os.environ.get("DATABRICKS_CLIENT_SECRET")
+    dsn = os.environ.get("DATABASE_URL")
+    conn = psycopg2.connect(dsn) if dsn else psycopg2.connect()
+    conn.autocommit = autocommit
+    return conn
 
-    if client_id and client_secret:
-        host = os.environ.get("DATABRICKS_HOST")
-        if not host:
-            raise KeyError("DATABRICKS_HOST is not set in the app runtime.")
-        kwargs = {
-            "server_hostname": _server_hostname(),
-            "http_path": _http_path(),
-            "credentials_provider": lambda: _service_principal_provider(host),
-            "user_agent_entry": "stock-tracker",
-        }
-    else:
-        kwargs = {
-            "server_hostname": _server_hostname(),
-            "http_path": _http_path(),
-            "access_token": os.environ["DATABRICKS_TOKEN"],
-            "user_agent_entry": "stock-tracker",
-        }
 
-    if not autocommit:
-        kwargs["autocommit"] = False
-    return sql.connect(**kwargs)
+def bootstrap():
+    """Create the schema and tables if they don't exist yet (idempotent)."""
+    conn = connect()
+    try:
+        cur = conn.cursor()
+        try:
+            for statement in _DDL:
+                cur.execute(statement)
+        finally:
+            cur.close()
+    finally:
+        conn.close()
 
 
 def _jsonable(value):

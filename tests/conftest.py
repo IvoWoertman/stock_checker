@@ -55,7 +55,7 @@ class FakeDb:
         self.connect_calls = 0
 
     def fq(self, table):
-        return f"main.stock.{table}"
+        return f"stock.{table}"
 
     def one(self, sql, params=None):
         return self.one_results.pop(0) if self.one_results else None
