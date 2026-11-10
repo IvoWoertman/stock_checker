@@ -7,13 +7,13 @@ automatically, so no credentials live in code. For local development, set
 ``DATABASE_URL`` instead.
 """
 import os
+from contextlib import closing
 from datetime import date as _date
 from datetime import datetime as _datetime
 from datetime import time as _time
 from decimal import Decimal
 
 import psycopg2
-import psycopg2.extras
 
 SCHEMA = os.environ.get("PG_SCHEMA", "stock")
 
@@ -122,16 +122,9 @@ def connect(autocommit: bool = True):
 
 def bootstrap():
     """Create the schema and tables if they don't exist yet (idempotent)."""
-    conn = connect()
-    try:
-        cur = conn.cursor()
-        try:
-            for statement in _DDL:
-                cur.execute(statement)
-        finally:
-            cur.close()
-    finally:
-        conn.close()
+    with closing(connect()) as conn, conn.cursor() as cur:
+        for statement in _DDL:
+            cur.execute(statement)
 
 
 def _jsonable(value):
@@ -145,7 +138,7 @@ def _jsonable(value):
 
 def rows(sql_text: str, params=None):
     """Run a SELECT and return a list of dicts with JSON-safe values."""
-    with connect() as conn, conn.cursor() as cur:
+    with closing(connect()) as conn, conn.cursor() as cur:
         cur.execute(sql_text, params or [])
         cols = [c[0] for c in cur.description]
         return [{c: _jsonable(v) for c, v in zip(cols, row)} for row in cur.fetchall()]
