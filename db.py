@@ -77,8 +77,11 @@ _DDL = [
       done_at    TIMESTAMPTZ
     )
     """,
+    f"DROP VIEW IF EXISTS {SCHEMA}.v_active_lot_stock CASCADE",
+    f"DROP VIEW IF EXISTS {SCHEMA}.v_current_lot_stock CASCADE",
+    f"DROP VIEW IF EXISTS {SCHEMA}.v_product_stock CASCADE",
     f"""
-    CREATE OR REPLACE VIEW {SCHEMA}.v_current_lot_stock AS
+    CREATE VIEW {SCHEMA}.v_current_lot_stock AS
     SELECT
       l.lot_id, l.product_id,
       p.name AS product_name, p.brand, p.gtin,
@@ -92,9 +95,9 @@ _DDL = [
     GROUP BY l.lot_id, l.product_id, p.name, p.brand, p.gtin,
              l.added_date, l.best_before_date, l.location, l.notes
     """,
-    f"CREATE OR REPLACE VIEW {SCHEMA}.v_active_lot_stock AS SELECT * FROM {SCHEMA}.v_current_lot_stock WHERE grams_remaining > 0",
+    f"CREATE VIEW {SCHEMA}.v_active_lot_stock AS SELECT * FROM {SCHEMA}.v_current_lot_stock WHERE grams_remaining > 0",
     f"""
-    CREATE OR REPLACE VIEW {SCHEMA}.v_product_stock AS
+    CREATE VIEW {SCHEMA}.v_product_stock AS
     SELECT
       p.product_id, p.name, p.brand, p.category, p.min_stock_g,
       COUNT(b.lot_id) AS lot_count,
