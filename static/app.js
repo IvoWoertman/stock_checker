@@ -165,6 +165,24 @@ async function loadInventory() {
   }
 }
 
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+// After a write, refresh twice (with a short settle) to absorb any
+// read-after-write lag in Lakebase.
+async function refreshInventory() {
+  await loadInventory();
+  await sleep(450);
+  await loadInventory();
+}
+
+async function refreshShopping() {
+  await loadShopping();
+  await sleep(450);
+  await loadShopping();
+}
+
 // ---- actions -------------------------------------------------------------
 
 async function handleAdd(event) {
@@ -183,7 +201,7 @@ async function handleAdd(event) {
     await request('/lots', { method: 'POST', body: JSON.stringify(payload) });
     els.addForm.reset();
     showToast(`Added ${payload.name}`);
-    await loadInventory();
+    await refreshInventory();
   } catch (error) {
     showToast(error.message, true);
   }
@@ -206,7 +224,7 @@ async function handleAction(action, lotId) {
     try {
       await request(`/lots/${lotId}/discard`, { method: 'POST', body: JSON.stringify({ op_id: opId() }) });
       showToast('Discarded');
-      await loadInventory();
+      await refreshInventory();
       document.querySelectorAll('.lots').forEach((box) => { box.hidden = true; });
     } catch (error) { showToast(error.message, true); }
     return;
@@ -233,7 +251,7 @@ async function handleAction(action, lotId) {
       });
     }
     showToast('Updated');
-    await loadInventory();
+    await refreshInventory();
     document.querySelectorAll('.lots').forEach((box) => { box.hidden = true; });
   } catch (error) { showToast(error.message, true); }
 }
@@ -266,14 +284,14 @@ async function handleShopAdd(event) {
   try {
     await request('/shopping', { method: 'POST', body: JSON.stringify({ name }) });
     els.shopForm.reset();
-    await loadShopping();
+    await refreshShopping();
   } catch (error) { showToast(error.message, true); }
 }
 
 async function handleShopDone(itemId) {
   try {
     await request(`/shopping/${itemId}/done`, { method: 'POST', body: '{}' });
-    await loadShopping();
+    await refreshShopping();
   } catch (error) { showToast(error.message, true); }
 }
 
@@ -321,7 +339,7 @@ async function handleLotScan(lotId) {
     if (!Number.isFinite(grams) || grams <= 0) { showToast('Enter a positive number.', true); return; }
     await useLot(lotId, grams);
     showToast('Recorded use');
-    await loadInventory();
+    await refreshInventory();
   } catch (error) { showToast(error.message, true); }
 }
 
