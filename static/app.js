@@ -147,15 +147,20 @@ async function toggleProduct(productId) {
   }
 }
 
+function setStatus(state) {
+  els.status.dataset.state = state;
+  els.status.textContent = { ok: 'online', error: 'offline', syncing: 'syncing' }[state];
+}
+
 async function loadInventory() {
   try {
-    els.status.textContent = 'syncing…';
+    setStatus('syncing');
     allProducts = await request('/inventory');
     populateCategories();
     renderProducts();
-    els.status.textContent = 'ok';
+    setStatus('ok');
   } catch (error) {
-    els.status.textContent = 'error';
+    setStatus('error');
     showToast(error.message, true);
   }
 }

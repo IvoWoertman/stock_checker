@@ -3,17 +3,45 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#0f172a" />
+    <meta name="theme-color" content="#0a0e17" />
     <title>Stock</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
     <link rel="stylesheet" href="/static/styles.css" />
   </head>
   <body>
     <header class="topbar">
-      <h1>Stock</h1>
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7l9-4 9 4-9 4-9-4z" />
+            <path d="M3 7v10l9 4 9-4V7" />
+            <path d="M12 11v10" />
+          </svg>
+        </div>
+        <div class="brand-text">
+          <span class="brand-name">Stock</span>
+          <span class="brand-sub">freezer · pantry</span>
+        </div>
+      </div>
       <div class="top-actions">
-        <span class="status" id="status" title="API connection">…</span>
-        <button class="icon-btn" id="scan-btn" title="Scan barcode">📷</button>
-        <button class="icon-btn" id="refresh" title="Refresh">↻</button>
+        <span class="status" id="status" data-state="syncing" title="Connection">·</span>
+        <button class="icon-btn" id="scan-btn" title="Scan barcode" aria-label="Scan barcode">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M3 7V5a2 2 0 0 1 2-2h2" />
+            <path d="M17 3h2a2 2 0 0 1 2 2v2" />
+            <path d="M21 17v2a2 2 0 0 1-2 2h-2" />
+            <path d="M7 21H5a2 2 0 0 1-2-2v-2" />
+            <path d="M7 12h10" />
+          </svg>
+        </button>
+        <button class="icon-btn" id="refresh" title="Refresh" aria-label="Refresh">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 1 1-2.64-6.36" />
+            <path d="M21 3v6h-6" />
+          </svg>
+        </button>
       </div>
     </header>
 
@@ -36,7 +64,7 @@
             </label>
           </div>
           <label>
-            <span>Barcode (optional)</span>
+            <span>Barcode <em>optional</em></span>
             <div class="code-row">
               <input name="gtin" type="text" inputmode="numeric" placeholder="EAN / GTIN" />
               <button type="button" class="scan-inline" id="scan-inline">Scan</button>
@@ -52,33 +80,35 @@
               <input name="min_stock_g" type="number" inputmode="decimal" min="0" step="1" placeholder="e.g. 500" />
             </label>
           </div>
-          <button type="submit">Add</button>
+          <button type="submit">Add to stock</button>
         </form>
       </section>
 
-      <section class="inventory">
-        <div class="inventory-head">
-          <h2>In stock</h2>
-        </div>
-        <div class="filters">
-          <input id="search" type="text" placeholder="Search name…" autocomplete="off" />
-          <select id="category-filter" aria-label="Filter by category">
-            <option value="">All categories</option>
-          </select>
-        </div>
-        <div id="inventory" class="product-list" aria-live="polite"></div>
-      </section>
+      <div class="right-col">
+        <section class="inventory">
+          <div class="inventory-head">
+            <h2>In stock</h2>
+          </div>
+          <div class="filters">
+            <input id="search" type="text" placeholder="Search name…" autocomplete="off" />
+            <select id="category-filter" aria-label="Filter by category">
+              <option value="">All categories</option>
+            </select>
+          </div>
+          <div id="inventory" class="product-list" aria-live="polite"></div>
+        </section>
 
-      <section class="inventory">
-        <div class="inventory-head">
-          <h2>Shopping list</h2>
-        </div>
-        <form id="shop-form" class="shop-form" autocomplete="off">
-          <input name="shop-name" type="text" placeholder="Add to buy…" required />
-          <button type="submit">Add</button>
-        </form>
-        <div id="shopping" class="shop-list" aria-live="polite"></div>
-      </section>
+        <section class="inventory">
+          <div class="inventory-head">
+            <h2>Shopping list</h2>
+          </div>
+          <form id="shop-form" class="shop-form" autocomplete="off">
+            <input name="shop-name" type="text" placeholder="Add to buy…" required />
+            <button type="submit">Add</button>
+          </form>
+          <div id="shopping" class="shop-list" aria-live="polite"></div>
+        </section>
+      </div>
     </main>
 
     <div class="modal" id="scan-modal" hidden>
