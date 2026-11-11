@@ -93,6 +93,7 @@ def create_lot():
         notes=payload.get("notes"),
         actor=payload.get("actor"),
         shelf_life_days=payload.get("shelf_life_days"),
+        min_stock_g=payload.get("min_stock_g"),
         op_id=payload.get("op_id"),
     )
     return jsonify(result), 201

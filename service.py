@@ -37,8 +37,12 @@ def _is_conflict(error: Exception) -> bool:
 # ---- reads ---------------------------------------------------------------
 
 def list_inventory():
-    """Product-level overview: one row per product with a stock balance."""
-    return db.rows(f"SELECT * FROM {db.fq('v_product_stock')} ORDER BY name ASC")
+    """Product-level overview: in-stock or tracked products, low stock first."""
+    return db.rows(
+        f"SELECT * FROM {db.fq('v_product_stock')} "
+        "WHERE lot_count > 0 OR min_stock_g IS NOT NULL "
+        "ORDER BY low_stock DESC, name ASC"
+    )
 
 
 def list_lots(product_id: str):
@@ -106,7 +110,7 @@ def _get_or_create_product(cur, *, name, gtin, shelf_life_days):
 
 
 def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
-            location=None, notes=None, actor=None, shelf_life_days=None, op_id=None):
+            location=None, notes=None, actor=None, shelf_life_days=None, min_stock_g=None, op_id=None):
     """Create a product if needed, a lot, and its stock-in event, atomically."""
     op_id = op_id or str(uuid.uuid4())
     qty_g = float(qty_g)
@@ -134,6 +138,13 @@ def add_lot(*, name, gtin=None, qty_g, added_date=None, best_before=None,
             "updated_at = CURRENT_TIMESTAMP WHERE product_id = %s",
             [qty_g, product_id],
         )
+
+        if min_stock_g is not None:
+            cur.execute(
+                f"UPDATE {db.fq('products')} SET min_stock_g = CAST(%s AS NUMERIC(10,2)), "
+                "updated_at = CURRENT_TIMESTAMP WHERE product_id = %s",
+                [float(min_stock_g), product_id],
+            )
 
         cur.execute(
             f"INSERT INTO {db.fq('lots')} "

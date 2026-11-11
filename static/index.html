@@ -42,10 +42,16 @@
               <button type="button" class="scan-inline" id="scan-inline">Scan</button>
             </div>
           </label>
-          <label>
-            <span>Shelf life, days (optional)</span>
-            <input name="shelf_life_days" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g. 90" />
-          </label>
+          <div class="row">
+            <label>
+              <span>Shelf life, days</span>
+              <input name="shelf_life_days" type="number" inputmode="numeric" min="1" step="1" placeholder="e.g. 90" />
+            </label>
+            <label>
+              <span>Min stock, g</span>
+              <input name="min_stock_g" type="number" inputmode="decimal" min="0" step="1" placeholder="e.g. 500" />
+            </label>
+          </div>
           <button type="submit">Add</button>
         </form>
       </section>
@@ -53,6 +59,12 @@
       <section class="inventory">
         <div class="inventory-head">
           <h2>In stock</h2>
+        </div>
+        <div class="filters">
+          <input id="search" type="text" placeholder="Search name…" autocomplete="off" />
+          <select id="category-filter" aria-label="Filter by category">
+            <option value="">All categories</option>
+          </select>
         </div>
         <div id="inventory" class="product-list" aria-live="polite"></div>
       </section>

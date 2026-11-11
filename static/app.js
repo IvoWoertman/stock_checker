@@ -15,6 +15,8 @@ const els = {
   scanStatus: $('#scan-status'),
   shopForm: $('#shop-form'),
   shopping: $('#shopping'),
+  search: $('#search'),
+  categoryFilter: $('#category-filter'),
 };
 
 let toastTimer;
@@ -72,9 +74,29 @@ function isUuid(value) {
 
 // ---- inventory rendering -------------------------------------------------
 
-function renderProducts(products) {
+let allProducts = [];
+let searchTerm = '';
+let categoryFilter = '';
+
+function filteredProducts() {
+  return allProducts.filter((p) => {
+    const name = (p.name || '').toLowerCase();
+    return (!searchTerm || name.includes(searchTerm.toLowerCase()))
+      && (!categoryFilter || p.category === categoryFilter);
+  });
+}
+
+function populateCategories() {
+  const cats = [...new Set(allProducts.map((p) => p.category).filter(Boolean))].sort();
+  els.categoryFilter.innerHTML = '<option value="">All categories</option>'
+    + cats.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join('');
+  els.categoryFilter.value = categoryFilter;
+}
+
+function renderProducts() {
+  const products = filteredProducts();
   if (!products.length) {
-    els.inventory.innerHTML = '<p class="empty">Nothing in stock yet. Add something above or scan a package.</p>';
+    els.inventory.innerHTML = '<p class="empty">Nothing matches.</p>';
     return;
   }
   els.inventory.innerHTML = products.map((p) => `
@@ -83,12 +105,15 @@ function renderProducts(products) {
         <div class="product-title">
           <strong>${esc(p.name)}</strong>
           ${p.category ? `<span class="badge">${esc(p.category)}</span>` : ''}
+          ${p.low_stock ? '<span class="badge low">low</span>' : ''}
+          ${Number(p.lot_count) === 0 ? '<span class="badge out">out</span>' : ''}
         </div>
         <div class="product-meta">
           <span>${p.lot_count} ${Number(p.lot_count) === 1 ? 'package' : 'packages'}</span>
           <span class="grams">${fmtGrams(p.total_grams)}</span>
         </div>
       </button>
+      ${p.low_stock && p.min_stock_g != null ? `<div class="low-note">below min ${Math.round(p.min_stock_g)} g</div>` : ''}
       <div class="lots" id="lots-${esc(p.product_id)}" hidden></div>
     </article>
   `).join('');
@@ -125,8 +150,9 @@ async function toggleProduct(productId) {
 async function loadInventory() {
   try {
     els.status.textContent = 'syncing…';
-    const products = await request('/inventory');
-    renderProducts(products);
+    allProducts = await request('/inventory');
+    populateCategories();
+    renderProducts();
     els.status.textContent = 'ok';
   } catch (error) {
     els.status.textContent = 'error';
@@ -145,6 +171,7 @@ async function handleAdd(event) {
     location: (form.get('location') || '').trim() || null,
     gtin: (form.get('gtin') || '').trim() || null,
     shelf_life_days: (form.get('shelf_life_days') || '').trim() || null,
+    min_stock_g: (form.get('min_stock_g') || '').trim() || null,
     op_id: opId(),
   };
   try {
@@ -372,6 +399,14 @@ els.shopForm.addEventListener('submit', handleShopAdd);
 els.shopping.addEventListener('click', (event) => {
   const btn = event.target.closest('.shop-done');
   if (btn) handleShopDone(btn.dataset.id);
+});
+els.search.addEventListener('input', (event) => {
+  searchTerm = event.target.value.trim();
+  renderProducts();
+});
+els.categoryFilter.addEventListener('change', (event) => {
+  categoryFilter = event.target.value;
+  renderProducts();
 });
 
 loadInventory();

@@ -21,6 +21,12 @@ def test_add_lot_is_idempotent(fake_db):
     assert fake_db.connect_calls == 1
 
 
+def test_add_lot_sets_min_stock(fake_db):
+    fake_db.cursor._fetchone = [None, None]  # dup check, then name_key lookup
+    service.add_lot(name="Ground beef", qty_g=500, min_stock_g=500)
+    assert any("min_stock_g" in sql for sql, _ in fake_db.cursor.statements)
+
+
 def test_record_use_rejects_overuse(fake_db):
     fake_db.cursor._fetchone = [None, (200,)]  # op_id dup check, then balance
     with pytest.raises(ValueError):

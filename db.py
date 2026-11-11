@@ -33,10 +33,12 @@ _DDL = [
       name_key               TEXT,
       category               TEXT,
       default_best_before_days INTEGER,
+      min_stock_g            NUMERIC(10,2),
       created_at             TIMESTAMPTZ NOT NULL DEFAULT now(),
       updated_at             TIMESTAMPTZ NOT NULL DEFAULT now()
     )
     """,
+    f"ALTER TABLE {SCHEMA}.products ADD COLUMN IF NOT EXISTS min_stock_g NUMERIC(10,2)",
     f"""
     CREATE TABLE IF NOT EXISTS {SCHEMA}.lots (
       lot_id           TEXT PRIMARY KEY,
@@ -94,19 +96,20 @@ _DDL = [
     f"""
     CREATE OR REPLACE VIEW {SCHEMA}.v_product_stock AS
     SELECT
-      p.product_id, p.name, p.brand, p.category,
+      p.product_id, p.name, p.brand, p.category, p.min_stock_g,
       COUNT(b.lot_id) AS lot_count,
       COALESCE(SUM(b.grams_remaining), 0) AS total_grams,
-      MIN(l.added_date) AS oldest_added_date
+      MIN(l.added_date) AS oldest_added_date,
+      (p.min_stock_g IS NOT NULL AND COALESCE(SUM(b.grams_remaining), 0) < p.min_stock_g) AS low_stock
     FROM {SCHEMA}.products p
-    JOIN {SCHEMA}.lots l ON l.product_id = p.product_id
-    JOIN (
+    LEFT JOIN {SCHEMA}.lots l ON l.product_id = p.product_id
+    LEFT JOIN (
       SELECT lot_id, SUM(quantity_delta_g) AS grams_remaining
       FROM {SCHEMA}.inventory_events
       GROUP BY lot_id
       HAVING SUM(quantity_delta_g) > 0
     ) b ON b.lot_id = l.lot_id
-    GROUP BY p.product_id, p.name, p.brand, p.category
+    GROUP BY p.product_id, p.name, p.brand, p.category, p.min_stock_g
     """,
 ]
 
